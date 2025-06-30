@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "claude-code-mcp": {
+      "command": "claude-code-mcp",
+      "args": [],
+      "env": {
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
