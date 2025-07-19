@@ -20,7 +20,7 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/cmd/google"
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 	"github.com/d-kuro/claude-code-mcp/internal/server"
-	"github.com/d-kuro/claude-code-mcp/pkg/version"
+	"github.com/d-kuro/claude-code-mcp/internal/version"
 )
 
 func main() {

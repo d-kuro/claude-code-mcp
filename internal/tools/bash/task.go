@@ -95,86 +95,18 @@ func executeAgentTask(ctx context.Context, args *TaskArgs, logger tools.Logger) 
 	// Simulate agent processing time
 	time.Sleep(100 * time.Millisecond)
 
-	// Analyze the task to determine what kind of response to generate
-	taskType := analyzeTaskType(args.Prompt)
-
-	// Generate a simulated response based on the task type
+	// Generate a simulated response
 	result := &TaskResult{
 		Success:     true,
 		Description: args.Description,
 		Duration:    time.Since(startTime),
-		ToolsUsed:   getSimulatedToolsUsed(taskType),
-	}
-
-	switch taskType {
-	case "search":
-		result.Output = generateSearchResponse(args.Prompt)
-		result.Summary = "Completed search operation and found relevant results"
-	case "analysis":
-		result.Output = generateAnalysisResponse(args.Prompt)
-		result.Summary = "Completed code analysis and provided insights"
-	case "exploration":
-		result.Output = generateExplorationResponse(args.Prompt)
-		result.Summary = "Explored codebase structure and documented findings"
-	default:
-		result.Output = generateGenericResponse(args.Prompt)
-		result.Summary = "Completed task and provided analysis"
+		Output:      fmt.Sprintf("Task completed: %s", args.Prompt),
+		Summary:     "Completed task and provided analysis",
 	}
 
 	logger.Info("Agent task completed", "duration", result.Duration, "success", result.Success)
 
 	return result, nil
-}
-
-// analyzeTaskType determines the type of task based on the prompt content.
-func analyzeTaskType(prompt string) string {
-	promptLower := strings.ToLower(prompt)
-
-	if strings.Contains(promptLower, "search") || strings.Contains(promptLower, "find") {
-		return "search"
-	}
-	if strings.Contains(promptLower, "analyze") || strings.Contains(promptLower, "understand") {
-		return "analysis"
-	}
-	if strings.Contains(promptLower, "explore") || strings.Contains(promptLower, "structure") {
-		return "exploration"
-	}
-
-	return "generic"
-}
-
-// getSimulatedToolsUsed returns a list of tools that would typically be used for different task types.
-func getSimulatedToolsUsed(taskType string) []string {
-	switch taskType {
-	case "search":
-		return []string{"Grep", "Glob", "Read"}
-	case "analysis":
-		return []string{"Read", "Grep", "LS"}
-	case "exploration":
-		return []string{"LS", "Glob", "Read"}
-	default:
-		return []string{"Read", "LS"}
-	}
-}
-
-// generateSearchResponse generates a response for search-type tasks.
-func generateSearchResponse(prompt string) string {
-	return fmt.Sprintf(prompts.TaskSearchResponseTemplate, prompt)
-}
-
-// generateAnalysisResponse generates a response for analysis-type tasks.
-func generateAnalysisResponse(prompt string) string {
-	return fmt.Sprintf(prompts.TaskAnalysisResponseTemplate, prompt)
-}
-
-// generateExplorationResponse generates a response for exploration-type tasks.
-func generateExplorationResponse(prompt string) string {
-	return fmt.Sprintf(prompts.TaskExplorationResponseTemplate, prompt)
-}
-
-// generateGenericResponse generates a generic response for other task types.
-func generateGenericResponse(prompt string) string {
-	return fmt.Sprintf(prompts.TaskGenericResponseTemplate, prompt)
 }
 
 // formatTaskResult formats the task execution result into a readable string.

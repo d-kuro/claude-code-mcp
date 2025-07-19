@@ -9,6 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/d-kuro/claude-code-mcp/internal/collections"
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 	"github.com/d-kuro/claude-code-mcp/internal/security"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
@@ -18,8 +19,7 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/tools/todo"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/web"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/workflow"
-	"github.com/d-kuro/claude-code-mcp/pkg/collections"
-	"github.com/d-kuro/claude-code-mcp/pkg/version"
+	"github.com/d-kuro/claude-code-mcp/internal/version"
 )
 
 // loggerAdapter wraps logging.Logger to implement tools.Logger interface.

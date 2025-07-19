@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/d-kuro/claude-code-mcp/pkg/version"
+	"github.com/d-kuro/claude-code-mcp/internal/version"
 )
 
 // NewVersionCmd creates a new version command

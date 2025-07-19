@@ -2,7 +2,7 @@
 package todo
 
 import (
-	"github.com/d-kuro/claude-code-mcp/pkg/collections"
+	"github.com/d-kuro/claude-code-mcp/internal/collections"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

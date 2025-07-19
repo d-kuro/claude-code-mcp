@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/d-kuro/claude-code-mcp/pkg/errors"
+	"github.com/d-kuro/claude-code-mcp/internal/errors"
 )
 
 // Validator defines the security validation interface.
