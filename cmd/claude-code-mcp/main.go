@@ -50,9 +50,7 @@ func init() {
 
 	// Add subcommands
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(googleLoginCmd)
-	rootCmd.AddCommand(googleLogoutCmd)
-	rootCmd.AddCommand(googleStatusCmd)
+	rootCmd.AddCommand(googleCmd)
 }
 
 // versionCmd represents the version command

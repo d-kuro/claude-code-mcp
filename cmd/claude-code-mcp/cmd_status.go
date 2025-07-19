@@ -12,9 +12,9 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/storage"
 )
 
-// googleStatusCmd represents the google-status command
+// googleStatusCmd represents the status subcommand under google
 var googleStatusCmd = &cobra.Command{
-	Use:   "google-status",
+	Use:   "status",
 	Short: "Check Google OAuth2 authentication status",
 	Long: `Check the current OAuth2 authentication status.
 This command will display information about the stored authentication token,
@@ -37,7 +37,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Check if token exists
 	if !credStore.HasToken() {
 		fmt.Println("❌ Not authenticated")
-		fmt.Println("   Run 'google-login' command to authenticate")
+		fmt.Println("   Run 'claude-code-mcp google login' command to authenticate")
 		return nil
 	}
 
@@ -56,7 +56,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if token.RefreshToken != "" {
 			fmt.Println("   Refresh token available - authentication may be automatically renewed")
 		}
-		fmt.Println("   Run 'google-login' command to re-authenticate")
+		fmt.Println("   Run 'claude-code-mcp google login' command to re-authenticate")
 		return nil
 	}
 

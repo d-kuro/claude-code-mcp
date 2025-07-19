@@ -17,9 +17,9 @@ import (
 	"github.com/d-kuro/geminiwebtools/pkg/storage"
 )
 
-// googleLoginCmd represents the google-login command
+// googleLoginCmd represents the login subcommand under google
 var googleLoginCmd = &cobra.Command{
-	Use:   "google-login",
+	Use:   "login",
 	Short: "Authenticate with Google OAuth2 for web search functionality",
 	Long: `Authenticate with Google OAuth2 to enable web search functionality.
 This command will open a web browser to complete the OAuth2 authentication flow.
@@ -57,8 +57,8 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	if credStore.HasToken() {
 		token, err := credStore.LoadToken()
 		if err == nil && token.Valid() {
-			logger.Info("Already authenticated. Use 'google-logout' command to re-authenticate.")
-			fmt.Println("✓ Already authenticated. Use 'google-logout' command to re-authenticate.")
+			logger.Info("Already authenticated. Use 'claude-code-mcp google logout' command to re-authenticate.")
+			fmt.Println("✓ Already authenticated. Use 'claude-code-mcp google logout' command to re-authenticate.")
 			return nil
 		}
 	}

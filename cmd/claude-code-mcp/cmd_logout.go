@@ -9,9 +9,9 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 )
 
-// googleLogoutCmd represents the google-logout command
+// googleLogoutCmd represents the logout subcommand under google
 var googleLogoutCmd = &cobra.Command{
-	Use:   "google-logout",
+	Use:   "logout",
 	Short: "Remove stored Google OAuth2 authentication credentials",
 	Long: `Remove stored OAuth2 authentication credentials.
 This command will delete the stored authentication token, requiring re-authentication
