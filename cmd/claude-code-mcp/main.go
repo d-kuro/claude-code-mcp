@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/d-kuro/claude-code-mcp/internal/cmd"
+	"github.com/d-kuro/claude-code-mcp/internal/cmd/google"
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 	"github.com/d-kuro/claude-code-mcp/internal/server"
 	"github.com/d-kuro/claude-code-mcp/pkg/version"
@@ -49,34 +50,8 @@ func init() {
 	rootCmd.Flags().StringVar(&serverOpts.httpAddr, "http", "", "HTTP server address (e.g., :8080)")
 
 	// Add subcommands
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(googleCmd)
-}
-
-// versionCmd represents the version command
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version information",
-	Long:  `Print the version information of claude-code-mcp including git commit, build date, and Go version.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		jsonFlag, _ := cmd.Flags().GetBool("json")
-		v := version.GetVersion()
-
-		if jsonFlag {
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
-			if err := encoder.Encode(v); err != nil {
-				fmt.Fprintf(os.Stderr, "Error encoding version info: %v\n", err)
-				os.Exit(1)
-			}
-		} else {
-			fmt.Println(v.String())
-		}
-	},
-}
-
-func init() {
-	versionCmd.Flags().BoolP("json", "j", false, "Output version information as JSON")
+	rootCmd.AddCommand(cmd.NewVersionCmd())
+	rootCmd.AddCommand(google.NewGoogleCmd())
 }
 
 // runServer starts the MCP server

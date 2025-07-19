@@ -1,5 +1,4 @@
-// Package main implements the CLI commands for the Claude Code MCP server.
-package main
+package google
 
 import (
 	"fmt"
@@ -12,14 +11,18 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/storage"
 )
 
-// googleStatusCmd represents the status subcommand under google
-var googleStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Check Google OAuth2 authentication status",
-	Long: `Check the current OAuth2 authentication status.
+// NewStatusCmd creates a new status command
+func NewStatusCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Check Google OAuth2 authentication status",
+		Long: `Check the current OAuth2 authentication status.
 This command will display information about the stored authentication token,
 including expiration time and user information.`,
-	RunE: runStatus,
+		RunE: runStatus,
+	}
+
+	return cmd
 }
 
 // runStatus checks the OAuth2 authentication status

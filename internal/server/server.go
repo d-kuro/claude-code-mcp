@@ -12,7 +12,6 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 	"github.com/d-kuro/claude-code-mcp/internal/security"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
-	"github.com/d-kuro/claude-code-mcp/internal/tools/auth"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/bash"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/file"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/notebook"
@@ -157,9 +156,6 @@ func (s *Server) registerTools() error {
 	// Create workflow tools
 	workflowTools := workflow.CreateWorkflowTools(toolCtx)
 
-	// Create OAuth2 authentication tools
-	authTools := auth.CreateAuthTools(toolCtx)
-
 	// Combine all tools
 	allTools := collections.Concat(
 		fileTools,
@@ -168,7 +164,6 @@ func (s *Server) registerTools() error {
 		webTools,
 		todoTools,
 		workflowTools,
-		authTools,
 	)
 
 	// Register tools with MCP server

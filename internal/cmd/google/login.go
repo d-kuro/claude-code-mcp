@@ -1,5 +1,4 @@
-// Package main implements the CLI commands for the Claude Code MCP server.
-package main
+package google
 
 import (
 	"context"
@@ -17,32 +16,34 @@ import (
 	"github.com/d-kuro/geminiwebtools/pkg/storage"
 )
 
-// googleLoginCmd represents the login subcommand under google
-var googleLoginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Authenticate with Google OAuth2 for web search functionality",
-	Long: `Authenticate with Google OAuth2 to enable web search functionality.
-This command will open a web browser to complete the OAuth2 authentication flow.
-The authentication token will be stored securely for future use.`,
-	RunE: runLogin,
-}
-
 // loginFlags holds the flags for the login command
 type loginFlags struct {
 	port int
 }
 
-var loginOpts = &loginFlags{}
+// NewLoginCmd creates a new login command
+func NewLoginCmd() *cobra.Command {
+	opts := &loginFlags{}
 
-func init() {
+	cmd := &cobra.Command{
+		Use:   "login",
+		Short: "Authenticate with Google OAuth2 for web search functionality",
+		Long: `Authenticate with Google OAuth2 to enable web search functionality.
+This command will open a web browser to complete the OAuth2 authentication flow.
+The authentication token will be stored securely for future use.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLogin(cmd.Context(), opts)
+		},
+	}
+
 	// Add flags to the google-login command
-	googleLoginCmd.Flags().IntVarP(&loginOpts.port, "port", "p", 8080, "Port for OAuth2 callback server")
+	cmd.Flags().IntVarP(&opts.port, "port", "p", 8080, "Port for OAuth2 callback server")
+
+	return cmd
 }
 
 // runLogin executes the OAuth2 authentication flow
-func runLogin(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
+func runLogin(ctx context.Context, opts *loginFlags) error {
 	// Initialize logger
 	logger := logging.NewLogger("info")
 	logger.Info("Starting OAuth2 authentication flow")

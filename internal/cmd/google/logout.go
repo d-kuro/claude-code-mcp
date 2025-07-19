@@ -1,5 +1,4 @@
-// Package main implements the CLI commands for the Claude Code MCP server.
-package main
+package google
 
 import (
 	"fmt"
@@ -9,14 +8,18 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/logging"
 )
 
-// googleLogoutCmd represents the logout subcommand under google
-var googleLogoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Remove stored Google OAuth2 authentication credentials",
-	Long: `Remove stored OAuth2 authentication credentials.
+// NewLogoutCmd creates a new logout command
+func NewLogoutCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Remove stored Google OAuth2 authentication credentials",
+		Long: `Remove stored OAuth2 authentication credentials.
 This command will delete the stored authentication token, requiring re-authentication
 before using web search functionality.`,
-	RunE: runLogout,
+		RunE: runLogout,
+	}
+
+	return cmd
 }
 
 // runLogout removes the stored OAuth2 token
