@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -44,25 +45,44 @@ type serverFlags struct {
 var serverOpts = &serverFlags{}
 
 func init() {
-	// Add version flag
-	rootCmd.Flags().BoolP("version", "v", false, "Print version information and exit")
-
 	// Add server flags
 	rootCmd.Flags().StringVar(&serverOpts.httpAddr, "http", "", "HTTP server address (e.g., :8080)")
 
 	// Add subcommands
+	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(googleLoginCmd)
 	rootCmd.AddCommand(googleLogoutCmd)
 	rootCmd.AddCommand(googleStatusCmd)
 }
 
+// versionCmd represents the version command
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Long:  `Print the version information of claude-code-mcp including git commit, build date, and Go version.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		jsonFlag, _ := cmd.Flags().GetBool("json")
+		v := version.GetVersion()
+
+		if jsonFlag {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(v); err != nil {
+				fmt.Fprintf(os.Stderr, "Error encoding version info: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println(v.String())
+		}
+	},
+}
+
+func init() {
+	versionCmd.Flags().BoolP("json", "j", false, "Output version information as JSON")
+}
+
 // runServer starts the MCP server
 func runServer(cmd *cobra.Command, args []string) error {
-	// Check version flag
-	if versionFlag, _ := cmd.Flags().GetBool("version"); versionFlag {
-		fmt.Println(version.GetVersion().String())
-		return nil
-	}
 
 	// Get log level from environment variable, default to "info"
 	logLevel := os.Getenv("LOG_LEVEL")
