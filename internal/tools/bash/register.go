@@ -9,6 +9,5 @@ import (
 func CreateBashTools(ctx *tools.Context) []*tools.ServerTool {
 	return []*tools.ServerTool{
 		CreateBashTool(ctx),
-		CreateTaskTool(ctx),
 	}
 }

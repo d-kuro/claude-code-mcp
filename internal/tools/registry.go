@@ -142,7 +142,7 @@ func (r *Registry) getToolCategory(toolName string) string {
 	switch toolName {
 	case "Read", "Write", "Edit", "MultiEdit", "LS", "Glob", "Grep":
 		return "file"
-	case "Bash", "Task":
+	case "Bash":
 		return "system"
 	case "WebFetch", "WebSearch":
 		return "web"
@@ -150,8 +150,6 @@ func (r *Registry) getToolCategory(toolName string) string {
 		return "notebook"
 	case "TodoRead", "TodoWrite":
 		return "todo"
-	case "exit_plan_mode":
-		return "workflow"
 	default:
 		return "unknown"
 	}
@@ -159,7 +157,7 @@ func (r *Registry) getToolCategory(toolName string) string {
 
 // GetCategories returns all available tool categories.
 func (r *Registry) GetCategories() []string {
-	return []string{"file", "system", "web", "notebook", "todo", "workflow"}
+	return []string{"file", "system", "web", "notebook", "todo"}
 }
 
 // Validate checks if all registered tools are properly configured.

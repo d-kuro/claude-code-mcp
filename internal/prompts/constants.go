@@ -5,8 +5,6 @@ import _ "embed"
 
 // Embedded tool documentation files
 //
-//go:embed tools/task.md
-var TaskToolDoc string
 
 //go:embed tools/bash.md
 var BashToolDoc string

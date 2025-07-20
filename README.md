@@ -4,7 +4,7 @@ A Model Context Protocol (MCP) server that exposes Claude Code's built-in tools 
 
 ## Features
 
-- **Complete Claude Code Tool Compatibility**: All 16 Claude Code tools implemented with identical functionality
+- **Claude Code Tool Compatibility**: 14 core Claude Code tools implemented with identical functionality
 - **Zero Configuration**: No configuration required - all tools available by default
 - **Built-in Security**: Path validation and command sanitization for safe operation
 - **Multiple Transport Support**: Stdio, HTTP/SSE, and in-memory transports
@@ -64,14 +64,19 @@ That's it! All Claude Code tools are now available through the MCP interface wit
 
 ### System Operations
 - **Bash**: Execute commands with persistent shell sessions
-- **Task**: Launch agents for complex multi-step operations
 
 ### Extended Tools
 - **NotebookRead/NotebookEdit**: Jupyter notebook support
 - **WebFetch**: Fetch and process web content
 - **WebSearch**: Web search with domain filtering
 - **TodoRead/TodoWrite**: Session-based task management
-- **exit_plan_mode**: Development workflow support
+
+### Unsupported Tools
+
+The following Claude Code tools are **not supported** in this MCP server:
+
+- **Task**: Agent launching functionality is not available in MCP context
+- **exit_plan_mode**: Development workflow tool not applicable for MCP usage
 
 ## Configuration
 
@@ -208,7 +213,6 @@ claude-code-mcp/
 │   │   ├── web/        # Web tools
 │   │   ├── notebook/   # Jupyter support
 │   │   ├── todo/       # Task management
-│   │   └── workflow/   # Workflow tools
 │   ├── security/       # Security validation
 │   └── logging/        # Logging infrastructure
 └── examples/           # Usage examples
@@ -218,8 +222,8 @@ claude-code-mcp/
 
 ### Common Issues
 
-**Q: Are all tools really available by default?**
-A: Yes! All 16 Claude Code tools work immediately without any configuration.
+**Q: Are all Claude Code tools available?**
+A: 14 of the 16 Claude Code tools are available immediately. The Task and exit_plan_mode tools are not supported due to MCP architectural limitations.
 
 **Q: What security measures are in place?**
 A: Built-in path validation, command sanitization, and resource limits protect your system.

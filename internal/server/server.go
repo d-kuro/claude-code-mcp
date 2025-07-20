@@ -175,8 +175,7 @@ func (s *Server) registerTools() error {
 		slog.Any("tools", toolNames),
 	)
 
-	// Future tool registrations:
-	// - System operations: Task (already implemented but not registered yet)
+	// All core tools are now registered
 
 	return nil
 }
