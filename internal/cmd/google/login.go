@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -67,6 +68,14 @@ func runLogin(ctx context.Context, opts *loginFlags) error {
 	// Use minimal configuration browser authentication
 	fmt.Printf("Opening browser for authentication...\n")
 
+	logger.Debug("Starting browser authentication with geminiwebtools")
+
+	// Create directory if it doesn't exist
+	configDir := getConfigDir()
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
 	// Use geminiwebtools client for authentication
 	client, err := geminiwebtools.NewClient(
 		geminiwebtools.WithCredentialStore(credStore),
@@ -75,12 +84,15 @@ func runLogin(ctx context.Context, opts *loginFlags) error {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
-	logger.Debug("Starting browser authentication with geminiwebtools")
-	// The client automatically handles authentication when needed
-	// We can trigger it by making a simple request
-	_, err = client.Search(ctx, "test")
-	if err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
+	// Trigger browser authentication flow
+	if !client.IsAuthenticated() {
+		err = client.AuthenticateWithBrowser(ctx)
+		if err != nil {
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+		fmt.Println("✓ Authentication successful!")
+	} else {
+		fmt.Println("✓ Already authenticated.")
 	}
 
 	// Get the token from the credential store after authentication
@@ -152,7 +164,7 @@ func getConfigDir() string {
 		return ""
 	}
 
-	return homeDir + "/.claude-code-mcp"
+	return filepath.Join(homeDir, ".config", "claude-code-mcp")
 }
 
 // UserInfo represents user information from OAuth2 token

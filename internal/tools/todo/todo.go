@@ -32,21 +32,22 @@ const (
 
 // TodoItem represents a single todo item.
 type TodoItem struct {
-	ID       string       `json:"id" jsonschema:"required,description=Unique identifier for the todo item"`
-	Content  string       `json:"content" jsonschema:"required,description=The todo item content"`
-	Status   TodoStatus   `json:"status" jsonschema:"required,description=The status of the todo item (pending, in_progress, completed)"`
-	Priority TodoPriority `json:"priority" jsonschema:"required,description=The priority of the todo item (high, medium, low)"`
+	ID       string       `json:"id"`
+	Content  string       `json:"content"`
+	Status   TodoStatus   `json:"status"`
+	Priority TodoPriority `json:"priority"`
 }
 
 // TodoWriteArgs represents the arguments for the TodoWrite tool.
 type TodoWriteArgs struct {
-	Todos []TodoItem `json:"todos" jsonschema:"required,description=The updated todo list"`
+	Todos []TodoItem `json:"todos"`
 }
 
 // CreateTodoReadTool creates the TodoRead tool using MCP SDK patterns.
-func CreateTodoReadTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateTodoReadTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[map[string]any]) (*mcp.CallToolResultFor[any], error) {
 		// No permission check needed for reading todos
+		// No arguments needed for TodoRead
 
 		todos := GetSessionTodos(session)
 
@@ -83,16 +84,22 @@ func CreateTodoReadTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"TodoRead",
-		prompts.Default().TodoRead,
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "TodoRead",
+		Description: prompts.TodoReadToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // CreateTodoWriteTool creates the TodoWrite tool using MCP SDK patterns.
-func CreateTodoWriteTool(ctx *tools.Context) *mcp.ServerTool {
-	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[TodoWriteArgs]) (*mcp.CallToolResultFor[any], error) {
+func CreateTodoWriteTool(ctx *tools.Context) *tools.ServerTool {
+	typedHandler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[TodoWriteArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
 		// Validate todos
@@ -182,11 +189,44 @@ func CreateTodoWriteTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"TodoWrite",
-		prompts.Default().TodoWrite,
-		handler,
-	)
+	// Create a wrapper handler that converts from map[string]any to typed args
+	wrapperHandler := func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[map[string]any]) (*mcp.CallToolResultFor[any], error) {
+		// Convert map[string]any to typed args
+		var args TodoWriteArgs
+		data, err := json.Marshal(params.Arguments)
+		if err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to marshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		if err := json.Unmarshal(data, &args); err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to unmarshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		typedParams := &mcp.CallToolParamsFor[TodoWriteArgs]{
+			Name:      params.Name,
+			Arguments: args,
+		}
+
+		return typedHandler(ctx, session, typedParams)
+	}
+
+	tool := &mcp.Tool{
+		Name:        "TodoWrite",
+		Description: prompts.TodoWriteToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, wrapperHandler)
+		},
+	}
 }
 
 // isValidStatus checks if the given status is valid.

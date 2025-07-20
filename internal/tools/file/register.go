@@ -2,14 +2,12 @@
 package file
 
 import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // CreateFileTools creates all file operation tools using MCP SDK patterns.
-func CreateFileTools(ctx *tools.Context) []*mcp.ServerTool {
-	return []*mcp.ServerTool{
+func CreateFileTools(ctx *tools.Context) []*tools.ServerTool {
+	return []*tools.ServerTool{
 		CreateReadTool(ctx),
 		CreateWriteTool(ctx),
 		CreateEditTool(ctx),

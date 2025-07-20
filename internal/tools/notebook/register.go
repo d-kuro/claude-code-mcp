@@ -2,14 +2,12 @@
 package notebook
 
 import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // CreateNotebookTools creates all notebook operation tools using MCP SDK patterns.
-func CreateNotebookTools(ctx *tools.Context) []*mcp.ServerTool {
-	return []*mcp.ServerTool{
+func CreateNotebookTools(ctx *tools.Context) []*tools.ServerTool {
+	return []*tools.ServerTool{
 		CreateNotebookReadTool(ctx),
 		CreateNotebookEditTool(ctx),
 	}

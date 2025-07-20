@@ -18,7 +18,6 @@ import (
 	"github.com/d-kuro/claude-code-mcp/internal/tools/notebook"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/todo"
 	"github.com/d-kuro/claude-code-mcp/internal/tools/web"
-	"github.com/d-kuro/claude-code-mcp/internal/tools/workflow"
 	"github.com/d-kuro/claude-code-mcp/internal/version"
 )
 
@@ -73,11 +72,10 @@ func New(opts *Options) (*Server, error) {
 
 	registry := tools.NewRegistry(toolCtx)
 
-	mcpServer := mcp.NewServer(
-		"claude-code-mcp",
-		version.GetVersion().Version,
-		&mcp.ServerOptions{},
-	)
+	mcpServer := mcp.NewServer(&mcp.Implementation{
+		Name:    "claude-code-mcp",
+		Version: version.GetVersion().Version,
+	}, nil)
 
 	server := &Server{
 		mcpServer: mcpServer,
@@ -153,9 +151,6 @@ func (s *Server) registerTools() error {
 	// Create todo management tools
 	todoTools := todo.CreateTodoTools(toolCtx)
 
-	// Create workflow tools
-	workflowTools := workflow.CreateWorkflowTools(toolCtx)
-
 	// Combine all tools
 	allTools := collections.Concat(
 		fileTools,
@@ -163,15 +158,16 @@ func (s *Server) registerTools() error {
 		notebookTools,
 		webTools,
 		todoTools,
-		workflowTools,
 	)
 
 	// Register tools with MCP server
-	s.mcpServer.AddTools(allTools...)
-
 	var toolNames []string
 	for _, tool := range allTools {
+		// Use the RegisterFunc to register the tool with proper type inference
+		tool.RegisterFunc(s.mcpServer)
 		toolNames = append(toolNames, tool.Tool.Name)
+
+		s.logger.Debug("Registered tool", "name", tool.Tool.Name)
 	}
 
 	s.logger.Info("Successfully registered tools",

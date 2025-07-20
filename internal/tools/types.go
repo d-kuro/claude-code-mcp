@@ -5,6 +5,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ServerTool represents a tool with its registration function for MCP server.
+type ServerTool struct {
+	Tool         *mcp.Tool
+	RegisterFunc func(*mcp.Server) // Function that calls mcp.AddTool with correct types
+}
+
 // Tool represents a Claude Code tool that can be registered with the MCP server.
 type Tool interface {
 	// Name returns the tool name.

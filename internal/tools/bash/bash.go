@@ -8,18 +8,19 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/d-kuro/claude-code-mcp/internal/prompts"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // BashArgs represents the arguments for the Bash tool.
 type BashArgs struct {
-	Command     string  `json:"command" jsonschema:"required,description=The command to execute"`
-	Description *string `json:"description,omitempty" jsonschema:"description=Clear concise description of what this command does in 5-10 words. Examples: Input: ls Output: Lists files in current directory"`
-	Timeout     *int    `json:"timeout,omitempty" jsonschema:"description=Optional timeout in milliseconds (max 600000)"`
+	Command     string  `json:"command"`
+	Description *string `json:"description,omitempty"`
+	Timeout     *int    `json:"timeout,omitempty"`
 }
 
 // CreateBashTool creates the Bash tool using MCP SDK patterns.
-func CreateBashTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateBashTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[BashArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -74,11 +75,17 @@ func CreateBashTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Bash",
-		"Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.\n\nBefore executing the command, please follow these steps:\n\n1. Directory Verification:\n   - If the command will create new directories or files, first use the LS tool to verify the parent directory exists and is the correct location\n   - For example, before running \"mkdir foo/bar\", first use LS to check that \"foo\" exists and is the intended parent directory\n\n2. Command Execution:\n   - Always quote file paths that contain spaces with double quotes (e.g., cd \"path with spaces/file.txt\")\n   - Examples of proper quoting:\n     - cd \"/Users/name/My Documents\" (correct)\n     - cd /Users/name/My Documents (incorrect - will fail)\n     - python \"/path/with spaces/script.py\" (correct)\n     - python /path/with spaces/script.py (incorrect - will fail)\n   - After ensuring proper quoting, execute the command.\n   - Capture the output of the command.\n\nUsage notes:\n  - The command argument is required.\n  - You can specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). If not specified, commands will timeout after 120000ms (2 minutes).\n  - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.\n  - If the output exceeds 30000 characters, output will be truncated before being returned to you.\n  - VERY IMPORTANT: You MUST avoid using search commands like `find` and `grep`. Instead use Grep, Glob, or Task to search. You MUST avoid read tools like `cat`, `head`, `tail`, and `ls`, and use Read and LS to read files.\n - If you _still_ need to run `grep`, STOP. ALWAYS USE ripgrep at `rg` first, which all users have pre-installed.\n  - When issuing multiple commands, use the ';' or '&&' operator to separate them. DO NOT use newlines (newlines are ok in quoted strings).\n  - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it.\n    <good-example>\n    pytest /foo/bar/tests\n    </good-example>\n    <bad-example>\n    cd /foo/bar && pytest tests\n    </bad-example>",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Bash",
+		Description: prompts.BashToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // formatCommandResult formats the command execution result into a readable string.

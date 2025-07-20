@@ -14,22 +14,23 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/d-kuro/claude-code-mcp/internal/prompts"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // NotebookReadArgs represents the arguments for the NotebookRead tool.
 type NotebookReadArgs struct {
-	NotebookPath string  `json:"notebook_path" jsonschema:"required,description=The absolute path to the Jupyter notebook file to read (must be absolute not relative)"`
-	CellID       *string `json:"cell_id,omitempty" jsonschema:"description=The ID of a specific cell to read. If not provided all cells will be read."`
+	NotebookPath string  `json:"notebook_path"`
+	CellID       *string `json:"cell_id,omitempty"`
 }
 
 // NotebookEditArgs represents the arguments for the NotebookEdit tool.
 type NotebookEditArgs struct {
-	NotebookPath string  `json:"notebook_path" jsonschema:"required,description=The absolute path to the Jupyter notebook file to edit (must be absolute not relative)"`
-	NewSource    string  `json:"new_source" jsonschema:"required,description=The new source for the cell"`
-	CellID       *string `json:"cell_id,omitempty" jsonschema:"description=The ID of the cell to edit. When inserting a new cell the new cell will be inserted after the cell with this ID or at the beginning if not specified."`
-	CellType     *string `json:"cell_type,omitempty" jsonschema:"description=The type of the cell (code or markdown). If not specified it defaults to the current cell type. If using edit_mode=insert this is required.,enum=code,enum=markdown"`
-	EditMode     *string `json:"edit_mode,omitempty" jsonschema:"description=The type of edit to make (replace insert delete). Defaults to replace.,enum=replace,enum=insert,enum=delete"`
+	NotebookPath string  `json:"notebook_path"`
+	NewSource    string  `json:"new_source"`
+	CellID       *string `json:"cell_id,omitempty"`
+	CellType     *string `json:"cell_type,omitempty"`
+	EditMode     *string `json:"edit_mode,omitempty"`
 }
 
 // JupyterNotebook represents the structure of a Jupyter notebook.
@@ -51,7 +52,7 @@ type JupyterCell struct {
 }
 
 // CreateNotebookReadTool creates the NotebookRead tool using MCP SDK patterns.
-func CreateNotebookReadTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateNotebookReadTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[NotebookReadArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -91,15 +92,49 @@ func CreateNotebookReadTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"NotebookRead",
-		"Reads a Jupyter notebook (.ipynb file) and returns all of the cells with their outputs. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path.",
-		handler,
-	)
+	// Create a wrapper handler that converts from map[string]any to typed args
+	wrapperHandler := func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[map[string]any]) (*mcp.CallToolResultFor[any], error) {
+		// Convert map[string]any to typed args
+		var args NotebookReadArgs
+		data, err := json.Marshal(params.Arguments)
+		if err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to marshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		if err := json.Unmarshal(data, &args); err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to unmarshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		// Create typed params and call the original handler
+		typedParams := &mcp.CallToolParamsFor[NotebookReadArgs]{
+			Name:      params.Name,
+			Arguments: args,
+		}
+
+		return handler(ctx, session, typedParams)
+	}
+
+	tool := &mcp.Tool{
+		Name:        "NotebookRead",
+		Description: prompts.NotebookReadToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, wrapperHandler)
+		},
+	}
 }
 
 // CreateNotebookEditTool creates the NotebookEdit tool using MCP SDK patterns.
-func CreateNotebookEditTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateNotebookEditTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[NotebookEditArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -174,11 +209,45 @@ func CreateNotebookEditTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"NotebookEdit",
-		"Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.",
-		handler,
-	)
+	// Create a wrapper handler that converts from map[string]any to typed args
+	wrapperHandler := func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[map[string]any]) (*mcp.CallToolResultFor[any], error) {
+		// Convert map[string]any to typed args
+		var args NotebookEditArgs
+		data, err := json.Marshal(params.Arguments)
+		if err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to marshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		if err := json.Unmarshal(data, &args); err != nil {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: Failed to unmarshal arguments: " + err.Error()}},
+				IsError: true,
+			}, nil
+		}
+
+		// Create typed params and call the original handler
+		typedParams := &mcp.CallToolParamsFor[NotebookEditArgs]{
+			Name:      params.Name,
+			Arguments: args,
+		}
+
+		return handler(ctx, session, typedParams)
+	}
+
+	tool := &mcp.Tool{
+		Name:        "NotebookEdit",
+		Description: prompts.NotebookEditToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, wrapperHandler)
+		},
+	}
 }
 
 // readNotebookContent reads and formats the content of a Jupyter notebook.

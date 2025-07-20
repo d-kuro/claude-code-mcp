@@ -15,12 +15,12 @@ import (
 
 // TaskArgs represents the arguments for the Task tool.
 type TaskArgs struct {
-	Description string `json:"description" jsonschema:"required,description=A short (3-5 word) description of the task"`
-	Prompt      string `json:"prompt" jsonschema:"required,description=The task for the agent to perform"`
+	Description string `json:"description"`
+	Prompt      string `json:"prompt"`
 }
 
 // CreateTaskTool creates the Task tool using MCP SDK patterns.
-func CreateTaskTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateTaskTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[TaskArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -69,11 +69,17 @@ func CreateTaskTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Task",
-		prompts.Default().Task.Description,
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Task",
+		Description: prompts.TaskToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // TaskResult represents the result of an agent task execution.

@@ -19,19 +19,19 @@ import (
 
 // WebFetchArgs represents the arguments for the WebFetch tool.
 type WebFetchArgs struct {
-	URL    string `json:"url" jsonschema:"required,description=The URL to fetch content from"`
-	Prompt string `json:"prompt" jsonschema:"required,description=The prompt to run on the fetched content"`
+	URL    string `json:"url"`
+	Prompt string `json:"prompt"`
 }
 
 // WebSearchArgs represents the arguments for the WebSearch tool.
 type WebSearchArgs struct {
-	Query          string   `json:"query" jsonschema:"required,description=The search query to use"`
-	AllowedDomains []string `json:"allowed_domains,omitempty" jsonschema:"description=Only include search results from these domains"`
-	BlockedDomains []string `json:"blocked_domains,omitempty" jsonschema:"description=Never include search results from these domains"`
+	Query          string   `json:"query"`
+	AllowedDomains []string `json:"allowed_domains,omitempty"`
+	BlockedDomains []string `json:"blocked_domains,omitempty"`
 }
 
 // CreateWebFetchTool creates the WebFetch tool using geminiwebtools library.
-func CreateWebFetchTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateWebFetchTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[WebFetchArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -81,15 +81,21 @@ func CreateWebFetchTool(ctx *tools.Context) *mcp.ServerTool {
 		return convertWebFetchResult(result, args), nil
 	}
 
-	return mcp.NewServerTool(
-		"WebFetch",
-		prompts.Default().WebFetch,
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "WebFetch",
+		Description: prompts.WebFetchToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // CreateWebSearchTool creates the WebSearch tool using geminiwebtools library.
-func CreateWebSearchTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateWebSearchTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[WebSearchArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -137,11 +143,17 @@ func CreateWebSearchTool(ctx *tools.Context) *mcp.ServerTool {
 		return convertWebSearchResult(filteredResult, args), nil
 	}
 
-	return mcp.NewServerTool(
-		"WebSearch",
-		prompts.Default().WebSearch,
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "WebSearch",
+		Description: prompts.WebSearchToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // Helper functions

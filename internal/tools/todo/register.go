@@ -2,14 +2,12 @@
 package todo
 
 import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // CreateTodoTools creates all todo management tools using MCP SDK patterns.
-func CreateTodoTools(ctx *tools.Context) []*mcp.ServerTool {
-	return []*mcp.ServerTool{
+func CreateTodoTools(ctx *tools.Context) []*tools.ServerTool {
+	return []*tools.ServerTool{
 		CreateTodoReadTool(ctx),
 		CreateTodoWriteTool(ctx),
 	}

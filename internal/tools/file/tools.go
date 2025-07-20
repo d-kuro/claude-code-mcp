@@ -14,18 +14,19 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/d-kuro/claude-code-mcp/internal/prompts"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // ReadArgs represents the arguments for the Read tool.
 type ReadArgs struct {
-	FilePath string `json:"file_path" jsonschema:"required,description=The absolute path to the file to read (must be absolute not relative)"`
-	Offset   *int   `json:"offset,omitempty" jsonschema:"description=The line number to start reading from. Only provide if the file is too large to read at once"`
-	Limit    *int   `json:"limit,omitempty" jsonschema:"description=The number of lines to read. Only provide if the file is too large to read at once"`
+	FilePath string `json:"file_path"`
+	Offset   *int   `json:"offset,omitempty"`
+	Limit    *int   `json:"limit,omitempty"`
 }
 
 // CreateReadTool creates the Read tool using MCP SDK patterns.
-func CreateReadTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateReadTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -57,21 +58,27 @@ func CreateReadTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Read",
-		"Reads a file from the local filesystem. You can access any file directly by using this tool.\nAssume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.\n\nUsage:\n- The file_path parameter must be an absolute path, not a relative path\n- By default, it reads up to 2000 lines starting from the beginning of the file\n- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters\n- Any lines longer than 2000 characters will be truncated\n- Results are returned using cat -n format, with line numbers starting at 1\n- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.\n- For Jupyter notebooks (.ipynb files), use the NotebookRead instead\n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful. \n- You will regularly be asked to read screenshots. If the user provides a path to a screenshot ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths like /var/folders/123/abc/T/TemporaryItems/NSIRD_screencaptureui_ZfB1tD/Screenshot.png\n- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Read",
+		Description: prompts.ReadToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // WriteArgs represents the arguments for the Write tool.
 type WriteArgs struct {
-	FilePath string `json:"file_path" jsonschema:"required,description=The absolute path to the file to write (must be absolute not relative)"`
-	Content  string `json:"content" jsonschema:"required,description=The content to write to the file"`
+	FilePath string `json:"file_path"`
+	Content  string `json:"content"`
 }
 
 // CreateWriteTool creates the Write tool using MCP SDK patterns.
-func CreateWriteTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateWriteTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[WriteArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -103,21 +110,27 @@ func CreateWriteTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Write",
-		"Writes a file to the local filesystem.\n\nUsage:\n- This tool will overwrite the existing file if there is one at the provided path.\n- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.\n- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.\n- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Write",
+		Description: prompts.WriteToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // LSArgs represents the arguments for the LS tool.
 type LSArgs struct {
-	Path   string   `json:"path" jsonschema:"required,description=The absolute path to the directory to list (must be absolute not relative)"`
-	Ignore []string `json:"ignore,omitempty" jsonschema:"description=List of glob patterns to ignore"`
+	Path   string   `json:"path"`
+	Ignore []string `json:"ignore,omitempty"`
 }
 
 // CreateLSTool creates the LS tool using MCP SDK patterns.
-func CreateLSTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateLSTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[LSArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -149,21 +162,27 @@ func CreateLSTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"LS",
-		"Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, if you know which directories to search.",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "LS",
+		Description: prompts.LSToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // GlobArgs represents the arguments for the Glob tool.
 type GlobArgs struct {
-	Pattern string  `json:"pattern" jsonschema:"required,description=The glob pattern to match files against"`
-	Path    *string `json:"path,omitempty" jsonschema:"description=The directory to search in. If not specified the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter undefined or null - simply omit it for the default behavior. Must be a valid directory path if provided."`
+	Pattern string  `json:"pattern"`
+	Path    *string `json:"path,omitempty"`
 }
 
 // CreateGlobTool creates the Glob tool using MCP SDK patterns.
-func CreateGlobTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateGlobTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GlobArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -229,22 +248,28 @@ func CreateGlobTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Glob",
-		"- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead\n- You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Glob",
+		Description: prompts.GlobToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // GrepArgs represents the arguments for the Grep tool.
 type GrepArgs struct {
-	Pattern string  `json:"pattern" jsonschema:"required,description=The regular expression pattern to search for in file contents"`
-	Path    *string `json:"path,omitempty" jsonschema:"description=The directory to search in. Defaults to the current working directory."`
-	Include *string `json:"include,omitempty" jsonschema:"description=File pattern to include in the search (e.g. \"*.js\", \"*.{ts,tsx}\")"`
+	Pattern string  `json:"pattern"`
+	Path    *string `json:"path,omitempty"`
+	Include *string `json:"include,omitempty"`
 }
 
 // CreateGrepTool creates the Grep tool using MCP SDK patterns.
-func CreateGrepTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateGrepTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[GrepArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -318,11 +343,17 @@ func CreateGrepTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Grep",
-		"- Fast content search tool that works with any codebase size\n- Searches file contents using regular expressions\n- Supports full regex syntax (eg. \"log.*Error\", \"function\\s+\\w+\", etc.)\n- Filter files by pattern with the include parameter (eg. \"*.js\", \"*.{ts,tsx}\")\n- Returns file paths with at least one match sorted by modification time\n- Use this tool when you need to find files containing specific patterns\n- If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Grep",
+		Description: prompts.GrepToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // Helper functions for file operations
@@ -505,14 +536,14 @@ func listDirectoryWithLS(dirPath string, ignorePatterns []string) (string, error
 
 // EditArgs represents the arguments for the Edit tool.
 type EditArgs struct {
-	FilePath   string `json:"file_path" jsonschema:"required,description=The absolute path to the file to modify"`
-	OldString  string `json:"old_string" jsonschema:"required,description=The text to replace"`
-	NewString  string `json:"new_string" jsonschema:"required,description=The text to replace it with (must be different from old_string)"`
-	ReplaceAll *bool  `json:"replace_all,omitempty" jsonschema:"description=Replace all occurences of old_string (default false)"`
+	FilePath   string `json:"file_path"`
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll *bool  `json:"replace_all,omitempty"`
 }
 
 // CreateEditTool creates the Edit tool using MCP SDK patterns.
-func CreateEditTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateEditTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[EditArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -562,11 +593,17 @@ func CreateEditTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"Edit",
-		"Performs exact string replacements in files.\n\nUsage:\n- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.\n- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.\n- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.\n- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "Edit",
+		Description: prompts.EditToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 func shouldIgnoreFile(filename string, ignorePatterns []string) bool {
@@ -580,19 +617,19 @@ func shouldIgnoreFile(filename string, ignorePatterns []string) bool {
 
 // MultiEditOperation represents a single edit operation in a MultiEdit.
 type MultiEditOperation struct {
-	OldString  string `json:"old_string" jsonschema:"required,description=The text to replace"`
-	NewString  string `json:"new_string" jsonschema:"required,description=The text to replace it with"`
-	ReplaceAll *bool  `json:"replace_all,omitempty" jsonschema:"description=Replace all occurences of old_string (default false)"`
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll *bool  `json:"replace_all,omitempty"`
 }
 
 // MultiEditArgs represents the arguments for the MultiEdit tool.
 type MultiEditArgs struct {
-	FilePath string               `json:"file_path" jsonschema:"required,description=The absolute path to the file to modify"`
-	Edits    []MultiEditOperation `json:"edits" jsonschema:"required,description=Array of edit operations to perform sequentially on the file"`
+	FilePath string               `json:"file_path"`
+	Edits    []MultiEditOperation `json:"edits"`
 }
 
 // CreateMultiEditTool creates the MultiEdit tool using MCP SDK patterns.
-func CreateMultiEditTool(ctx *tools.Context) *mcp.ServerTool {
+func CreateMultiEditTool(ctx *tools.Context) *tools.ServerTool {
 	handler := func(ctxReq context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[MultiEditArgs]) (*mcp.CallToolResultFor[any], error) {
 		args := params.Arguments
 
@@ -652,11 +689,17 @@ func CreateMultiEditTool(ctx *tools.Context) *mcp.ServerTool {
 		}, nil
 	}
 
-	return mcp.NewServerTool(
-		"MultiEdit",
-		"This is a tool for making multiple edits to a single file in one operation. It is built on top of the Edit tool and allows you to perform multiple find-and-replace operations efficiently. Prefer this tool over the Edit tool when you need to make multiple edits to the same file.\n\nBefore using this tool:\n\n1. Use the Read tool to understand the file's contents and context\n2. Verify the directory path is correct\n\nTo make multiple file edits, provide the following:\n1. file_path: The absolute path to the file to modify (must be absolute, not relative)\n2. edits: An array of edit operations to perform, where each edit contains:\n   - old_string: The text to replace (must match the file contents exactly, including all whitespace and indentation)\n   - new_string: The edited text to replace the old_string\n   - replace_all: Replace all occurences of old_string. This parameter is optional and defaults to false.\n\nIMPORTANT:\n- All edits are applied in sequence, in the order they are provided\n- Each edit operates on the result of the previous edit\n- All edits must be valid for the operation to succeed - if any edit fails, none will be applied\n- This tool is ideal when you need to make several changes to different parts of the same file\n- For Jupyter notebooks (.ipynb files), use the NotebookEdit instead\n\nCRITICAL REQUIREMENTS:\n1. All edits follow the same requirements as the single Edit tool\n2. The edits are atomic - either all succeed or none are applied\n3. Plan your edits carefully to avoid conflicts between sequential operations\n\nWARNING:\n- The tool will fail if edits.old_string doesn't match the file contents exactly (including whitespace)\n- The tool will fail if edits.old_string and edits.new_string are the same\n- Since edits are applied in sequence, ensure that earlier edits don't affect the text that later edits are trying to find\n\nWhen making edits:\n- Ensure all edits result in idiomatic, correct code\n- Do not leave the code in a broken state\n- Always use absolute file paths (starting with /)\n- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.\n- Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.\n\nIf you want to create a new file, use:\n- A new file path, including dir name if needed\n- First edit: empty old_string and the new file's contents as new_string\n- Subsequent edits: normal edit operations on the created content",
-		handler,
-	)
+	tool := &mcp.Tool{
+		Name:        "MultiEdit",
+		Description: prompts.MultiEditToolDoc,
+	}
+
+	return &tools.ServerTool{
+		Tool: tool,
+		RegisterFunc: func(server *mcp.Server) {
+			mcp.AddTool(server, tool, handler)
+		},
+	}
 }
 
 // performMultiEdit performs multiple edits atomically on a file.

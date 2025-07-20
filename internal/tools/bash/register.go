@@ -2,14 +2,12 @@
 package bash
 
 import (
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
 )
 
 // CreateBashTools creates all bash operation tools using MCP SDK patterns.
-func CreateBashTools(ctx *tools.Context) []*mcp.ServerTool {
-	return []*mcp.ServerTool{
+func CreateBashTools(ctx *tools.Context) []*tools.ServerTool {
+	return []*tools.ServerTool{
 		CreateBashTool(ctx),
 		CreateTaskTool(ctx),
 	}
