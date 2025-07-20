@@ -35,10 +35,16 @@ func (e *ShellExecutor) ExecuteInSession(ctx context.Context, session *ShellSess
 	// Execute the command
 	result, err := e.executeCommand(timeoutCtx, session, command)
 	if err != nil {
+		// Check for timeout first, before checking other error types
 		if timeoutCtx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("command timed out after %v", timeout)
 		}
 		return nil, err
+	}
+
+	// Also check for timeout in case the command completed but the context was cancelled
+	if timeoutCtx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("command timed out after %v", timeout)
 	}
 
 	// Update session state based on command execution
@@ -99,20 +105,20 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, session *ShellSessio
 	}
 	cmd.Env = env
 
-	// Execute command and capture output
-	stdout, err := cmd.Output()
-	stderr := ""
+	// Execute command and capture both stdout and stderr
+	stdout, stderr, err := e.runCommand(cmd)
 	exitCode := 0
 
 	if err != nil {
+		// Check for context cancellation/timeout first
+		if ctx.Err() == context.DeadlineExceeded {
+			// Command timed out
+			return nil, fmt.Errorf("command timed out")
+		}
 		// Handle different types of errors
 		if exitError, ok := err.(*exec.ExitError); ok {
 			// Command executed but returned non-zero exit code
-			stderr = string(exitError.Stderr)
 			exitCode = exitError.ExitCode()
-		} else if ctx.Err() == context.DeadlineExceeded {
-			// Command timed out
-			return nil, fmt.Errorf("command timed out")
 		} else {
 			// Command failed to execute
 			return nil, fmt.Errorf("failed to execute command: %w", err)
@@ -120,10 +126,22 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, session *ShellSessio
 	}
 
 	return &CommandResult{
-		Stdout:   string(stdout),
+		Stdout:   stdout,
 		Stderr:   stderr,
 		ExitCode: exitCode,
 	}, nil
+}
+
+// runCommand runs the command and captures both stdout and stderr separately.
+func (e *ShellExecutor) runCommand(cmd *exec.Cmd) (stdout, stderr string, err error) {
+	var stdoutBuf, stderrBuf strings.Builder
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+	stdout = stdoutBuf.String()
+	stderr = stderrBuf.String()
+	return
 }
 
 // handleCdCommand processes cd commands to update session working directory.

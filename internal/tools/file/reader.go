@@ -5,13 +5,28 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/d-kuro/claude-code-mcp/internal/prompts"
 	"github.com/d-kuro/claude-code-mcp/internal/tools"
+)
+
+const (
+	// Default buffer size for file reading (64KB)
+	DefaultBufferSize = 64 * 1024
+	// Large file threshold - files larger than this use streaming (10MB)
+	LargeFileThreshold = 10 * 1024 * 1024
+	// Maximum memory usage for in-memory reads (50MB)
+	MaxMemoryUsage = 50 * 1024 * 1024
+	// Default maximum lines to read
+	DefaultMaxLines = 2000
+	// Maximum line length before truncation
+	MaxLineLength = 2000
 )
 
 // ReadArgs represents the arguments for the Read tool.
@@ -68,6 +83,7 @@ func CreateReadTool(ctx *tools.Context) *tools.ServerTool {
 }
 
 // readFileContent reads file content with support for offset and limit.
+// Uses optimized strategies based on file size for better performance.
 func readFileContent(filePath string, offset *int, limit *int) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -86,35 +102,58 @@ func readFileContent(filePath string, offset *int, limit *int) (string, error) {
 		return "", fmt.Errorf("path is a directory, not a file")
 	}
 
+	fileSize := stat.Size()
+
+	// Handle empty files
+	if fileSize == 0 {
+		return "<system-reminder>\nWARNING: This file exists but has empty contents.\n</system-reminder>", nil
+	}
+
 	startOffset := 0
 	if offset != nil {
 		startOffset = *offset
 	}
 
-	maxLines := 2000
+	maxLines := DefaultMaxLines
 	if limit != nil {
 		maxLines = *limit
 	}
 
+	// Choose strategy based on file size and memory constraints
+	if fileSize > LargeFileThreshold || (int64(maxLines)*MaxLineLength) > MaxMemoryUsage {
+		return readLargeFile(file, startOffset, maxLines)
+	}
+
+	return readSmallFile(file, startOffset, maxLines)
+}
+
+// readSmallFile optimally reads smaller files into memory using strings.Builder
+func readSmallFile(file *os.File, startOffset, maxLines int) (string, error) {
 	scanner := bufio.NewScanner(file)
-	var lines []string
+	scanner.Buffer(make([]byte, DefaultBufferSize), DefaultBufferSize)
+
+	var builder strings.Builder
 	lineNumber := 1
 	currentOffset := 0
-	maxLineLength := 2000
+	linesRead := 0
 
-	for scanner.Scan() {
+	// Pre-allocate buffer with estimated size
+	builder.Grow(maxLines * 100) // Estimate 100 chars per line
+
+	for scanner.Scan() && linesRead < maxLines {
 		if currentOffset >= startOffset {
-			if len(lines) >= maxLines {
-				break
-			}
-
 			line := scanner.Text()
-			if len(line) > maxLineLength {
-				line = line[:maxLineLength] + "... (truncated)"
+			if len(line) > MaxLineLength {
+				line = line[:MaxLineLength] + "... (truncated)"
 			}
 
-			formattedLine := fmt.Sprintf("%5d→%s", lineNumber, line)
-			lines = append(lines, formattedLine)
+			if linesRead > 0 {
+				builder.WriteByte('\n')
+			}
+
+			// Optimized line formatting using direct writes
+			writeFormattedLine(&builder, lineNumber, line)
+			linesRead++
 		}
 		lineNumber++
 		currentOffset++
@@ -124,10 +163,79 @@ func readFileContent(filePath string, offset *int, limit *int) (string, error) {
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
-	content := strings.Join(lines, "\n")
-	if len(lines) == 0 && stat.Size() == 0 {
-		content = "<system-reminder>\nWARNING: This file exists but has empty contents.\n</system-reminder>"
+	return builder.String(), nil
+}
+
+// readLargeFile uses streaming approach for large files with controlled memory usage
+func readLargeFile(file *os.File, startOffset, maxLines int) (string, error) {
+	reader := bufio.NewReaderSize(file, DefaultBufferSize)
+	var builder strings.Builder
+
+	lineNumber := 1
+	currentOffset := 0
+	linesRead := 0
+
+	// Pre-allocate with conservative estimate
+	builder.Grow(maxLines * 80)
+
+	for linesRead < maxLines {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				// Handle last line without newline
+				if len(line) > 0 && currentOffset >= startOffset {
+					if len(line) > MaxLineLength {
+						line = line[:MaxLineLength] + "... (truncated)"
+					}
+
+					if linesRead > 0 {
+						builder.WriteByte('\n')
+					}
+					writeFormattedLine(&builder, lineNumber, line)
+				}
+				break
+			}
+			return "", fmt.Errorf("error reading file: %w", err)
+		}
+
+		// Remove trailing newline for processing
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			line = line[:len(line)-1]
+		}
+
+		if currentOffset >= startOffset {
+			if len(line) > MaxLineLength {
+				line = line[:MaxLineLength] + "... (truncated)"
+			}
+
+			if linesRead > 0 {
+				builder.WriteByte('\n')
+			}
+
+			writeFormattedLine(&builder, lineNumber, line)
+			linesRead++
+		}
+
+		lineNumber++
+		currentOffset++
 	}
 
-	return content, nil
+	return builder.String(), nil
+}
+
+// writeFormattedLine efficiently writes a formatted line to the builder
+// Optimized to avoid fmt.Sprintf allocations in tight loops
+func writeFormattedLine(builder *strings.Builder, lineNumber int, line string) {
+	// Convert line number to string efficiently
+	lineNumStr := strconv.Itoa(lineNumber)
+
+	// Calculate padding for right-alignment (5 characters total)
+	padding := 5 - len(lineNumStr)
+	for i := 0; i < padding; i++ {
+		builder.WriteByte(' ')
+	}
+
+	builder.WriteString(lineNumStr)
+	builder.WriteString("→")
+	builder.WriteString(line)
 }

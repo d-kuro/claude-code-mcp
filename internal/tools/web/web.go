@@ -168,42 +168,8 @@ func createErrorResponse(message string) *mcp.CallToolResultFor[any] {
 
 // convertWebFetchResult converts geminiwebtools WebFetchResult to MCP response format.
 func convertWebFetchResult(result *types.WebFetchResult, args WebFetchArgs) *mcp.CallToolResultFor[any] {
-	// Create metadata compatible with original implementation
-	metadata := map[string]any{
-		"url":           args.URL,
-		"prompt":        args.Prompt,
-		"api_used":      result.Metadata.APIUsed,
-		"has_grounding": result.Metadata.HasGrounding,
-	}
-
-	// Add conditional metadata fields
-	if result.Metadata.ContentType != "" {
-		metadata["content_type"] = result.Metadata.ContentType
-	}
-	if result.Metadata.ContentSize > 0 {
-		metadata["content_size"] = result.Metadata.ContentSize
-	}
-	if result.Metadata.ProcessingTime != "" {
-		metadata["processing_time"] = result.Metadata.ProcessingTime
-	}
-	if result.Metadata.SourceCount > 0 {
-		metadata["source_count"] = result.Metadata.SourceCount
-	}
-	if result.Metadata.SupportCount > 0 {
-		metadata["support_count"] = result.Metadata.SupportCount
-	}
-	if result.Metadata.UsedFallback {
-		metadata["used_fallback"] = true
-	}
-
-	// Use DisplayText as the main content (includes formatting and citations)
-	content := result.DisplayText
-	if content == "" {
-		content = result.Content
-	}
-	if content == "" {
-		content = "No content received"
-	}
+	metadata := buildWebFetchMetadata(result, args)
+	content := selectContent(result.DisplayText, result.Content, "No content received")
 
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: content}},
@@ -211,9 +177,41 @@ func convertWebFetchResult(result *types.WebFetchResult, args WebFetchArgs) *mcp
 	}
 }
 
+// buildWebFetchMetadata builds metadata for web fetch results.
+func buildWebFetchMetadata(result *types.WebFetchResult, args WebFetchArgs) map[string]any {
+	metadata := map[string]any{
+		"url":           args.URL,
+		"prompt":        args.Prompt,
+		"api_used":      result.Metadata.APIUsed,
+		"has_grounding": result.Metadata.HasGrounding,
+	}
+
+	addOptionalMetadata(metadata, map[string]any{
+		"content_type":    result.Metadata.ContentType,
+		"content_size":    result.Metadata.ContentSize,
+		"processing_time": result.Metadata.ProcessingTime,
+		"source_count":    result.Metadata.SourceCount,
+		"support_count":   result.Metadata.SupportCount,
+		"used_fallback":   result.Metadata.UsedFallback,
+	})
+
+	return metadata
+}
+
 // convertWebSearchResult converts geminiwebtools WebSearchResult to MCP response format.
 func convertWebSearchResult(result *types.WebSearchResult, args WebSearchArgs) *mcp.CallToolResultFor[any] {
-	// Create metadata compatible with original implementation
+	metadata := buildWebSearchMetadata(result, args)
+	fallbackContent := fmt.Sprintf("No search results found for query: %s", args.Query)
+	content := selectContent(result.DisplayText, result.Content, fallbackContent)
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{Text: content}},
+		Meta:    metadata,
+	}
+}
+
+// buildWebSearchMetadata builds metadata for web search results.
+func buildWebSearchMetadata(result *types.WebSearchResult, args WebSearchArgs) map[string]any {
 	metadata := map[string]any{
 		"query":         args.Query,
 		"search_region": "US", // Default region
@@ -221,39 +219,16 @@ func convertWebSearchResult(result *types.WebSearchResult, args WebSearchArgs) *
 		"api_used":      result.Metadata.APIUsed,
 	}
 
-	// Add conditional metadata fields
-	if result.Metadata.ProcessingTime != "" {
-		metadata["processing_time"] = result.Metadata.ProcessingTime
-	}
-	if result.Metadata.SourceCount > 0 {
-		metadata["source_count"] = result.Metadata.SourceCount
-	}
-	if result.Metadata.SupportCount > 0 {
-		metadata["support_count"] = result.Metadata.SupportCount
-	}
-	if len(result.Metadata.WebSearchQueries) > 0 {
-		metadata["web_search_queries"] = result.Metadata.WebSearchQueries
-	}
-	if len(args.AllowedDomains) > 0 {
-		metadata["allowed_domains"] = args.AllowedDomains
-	}
-	if len(args.BlockedDomains) > 0 {
-		metadata["blocked_domains"] = args.BlockedDomains
-	}
+	addOptionalMetadata(metadata, map[string]any{
+		"processing_time":    result.Metadata.ProcessingTime,
+		"source_count":       result.Metadata.SourceCount,
+		"support_count":      result.Metadata.SupportCount,
+		"web_search_queries": result.Metadata.WebSearchQueries,
+		"allowed_domains":    args.AllowedDomains,
+		"blocked_domains":    args.BlockedDomains,
+	})
 
-	// Use DisplayText as the main content (includes formatting and citations)
-	content := result.DisplayText
-	if content == "" {
-		content = result.Content
-	}
-	if content == "" {
-		content = fmt.Sprintf("No search results found for query: %s", args.Query)
-	}
-
-	return &mcp.CallToolResultFor[any]{
-		Content: []mcp.Content{&mcp.TextContent{Text: content}},
-		Meta:    metadata,
-	}
+	return metadata
 }
 
 // applyDomainFiltering applies domain filtering to search results as post-processing.
@@ -263,34 +238,51 @@ func applyDomainFiltering(result *types.WebSearchResult, allowedDomains, blocked
 		return result
 	}
 
-	// Filter sources based on domain restrictions
+	filteredSources := filterSourcesByDomain(result.Sources, allowedDomains, blockedDomains)
+	filteredResult := buildFilteredResult(result, filteredSources, allowedDomains, blockedDomains)
+
+	return &filteredResult
+}
+
+// filterSourcesByDomain filters sources based on domain restrictions.
+func filterSourcesByDomain(sources []types.GroundingChunk, allowedDomains, blockedDomains []string) []types.GroundingChunk {
 	var filteredSources []types.GroundingChunk
-	for _, source := range result.Sources {
-		if source.Web.URI == "" {
-			continue // Skip sources without URI
-		}
-
-		// Extract domain from URI
-		domain := extractDomain(source.Web.URI)
-		if domain == "" {
-			continue // Skip if we can't extract domain
-		}
-
-		// Check blocked domains first
-		if isBlocked(domain, blockedDomains) {
+	for _, source := range sources {
+		if !shouldIncludeSource(source, allowedDomains, blockedDomains) {
 			continue
 		}
-
-		// If allowed domains specified, check if domain is allowed
-		if len(allowedDomains) > 0 && !isAllowed(domain, allowedDomains) {
-			continue
-		}
-
 		filteredSources = append(filteredSources, source)
 	}
+	return filteredSources
+}
 
-	// Create a new result with filtered sources
-	filteredResult := *result // Copy the result
+// shouldIncludeSource determines if a source should be included based on domain filtering.
+func shouldIncludeSource(source types.GroundingChunk, allowedDomains, blockedDomains []string) bool {
+	if source.Web.URI == "" {
+		return false // Skip sources without URI
+	}
+
+	domain := extractDomain(source.Web.URI)
+	if domain == "" {
+		return false // Skip if we can't extract domain
+	}
+
+	// Check blocked domains first
+	if isBlocked(domain, blockedDomains) {
+		return false
+	}
+
+	// If allowed domains specified, check if domain is allowed
+	if len(allowedDomains) > 0 && !isAllowed(domain, allowedDomains) {
+		return false
+	}
+
+	return true
+}
+
+// buildFilteredResult creates a new result with filtered sources and updated metadata.
+func buildFilteredResult(original *types.WebSearchResult, filteredSources []types.GroundingChunk, allowedDomains, blockedDomains []string) types.WebSearchResult {
+	filteredResult := *original // Copy the result
 	filteredResult.Sources = filteredSources
 
 	// Update metadata to reflect filtering
@@ -298,15 +290,21 @@ func applyDomainFiltering(result *types.WebSearchResult, allowedDomains, blocked
 	filteredResult.Metadata.AllowedDomains = allowedDomains
 	filteredResult.Metadata.BlockedDomains = blockedDomains
 
-	// If we filtered out all sources, add a note
-	if len(result.Sources) > 0 && len(filteredSources) == 0 {
-		filteredResult.DisplayText += "\n\n**Note:** All search results were filtered out by domain restrictions."
-	} else if len(filteredSources) < len(result.Sources) {
-		removedCount := len(result.Sources) - len(filteredSources)
-		filteredResult.DisplayText += fmt.Sprintf("\n\n**Note:** %d search result(s) were filtered out by domain restrictions.", removedCount)
-	}
+	// Add filtering note to display text
+	filteredResult.DisplayText = addFilteringNote(original.DisplayText, len(original.Sources), len(filteredSources))
 
-	return &filteredResult
+	return filteredResult
+}
+
+// addFilteringNote adds a note about domain filtering to the display text.
+func addFilteringNote(displayText string, originalCount, filteredCount int) string {
+	if originalCount > 0 && filteredCount == 0 {
+		return displayText + "\n\n**Note:** All search results were filtered out by domain restrictions."
+	} else if filteredCount < originalCount {
+		removedCount := originalCount - filteredCount
+		return displayText + fmt.Sprintf("\n\n**Note:** %d search result(s) were filtered out by domain restrictions.", removedCount)
+	}
+	return displayText
 }
 
 // extractDomain extracts the domain from a URL.
@@ -338,6 +336,42 @@ func isAllowed(domain string, allowedDomains []string) bool {
 		}
 	}
 	return false
+}
+
+// selectContent selects the best available content with fallback logic.
+func selectContent(displayText, content, fallback string) string {
+	if displayText != "" {
+		return displayText
+	}
+	if content != "" {
+		return content
+	}
+	return fallback
+}
+
+// addOptionalMetadata adds non-empty metadata fields to the metadata map.
+func addOptionalMetadata(metadata map[string]any, optional map[string]any) {
+	for key, value := range optional {
+		if shouldAddMetadataField(value) {
+			metadata[key] = value
+		}
+	}
+}
+
+// shouldAddMetadataField determines if a metadata field should be added based on its value.
+func shouldAddMetadataField(value any) bool {
+	switch v := value.(type) {
+	case string:
+		return v != ""
+	case int:
+		return v > 0
+	case bool:
+		return v
+	case []string:
+		return len(v) > 0
+	default:
+		return value != nil
+	}
 }
 
 // createGeminiCredentialStore creates a geminiwebtools credential store
