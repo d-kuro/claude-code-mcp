@@ -20,8 +20,7 @@ import (
 
 // NotebookReadArgs represents the arguments for the NotebookRead tool.
 type NotebookReadArgs struct {
-	NotebookPath string  `json:"notebook_path"`
-	CellID       *string `json:"cell_id,omitempty"`
+	NotebookPath string `json:"notebook_path"`
 }
 
 // NotebookEditArgs represents the arguments for the NotebookEdit tool.
@@ -79,7 +78,7 @@ func CreateNotebookReadTool(ctx *tools.Context) *tools.ServerTool {
 			}, nil
 		}
 
-		content, err := readNotebookContent(sanitizedPath, args.CellID)
+		content, err := readNotebookContent(sanitizedPath, nil)
 		if err != nil {
 			return &mcp.CallToolResultFor[any]{
 				Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}},
@@ -171,6 +170,14 @@ func CreateNotebookEditTool(ctx *tools.Context) *tools.ServerTool {
 					IsError: true,
 				}, nil
 			}
+		}
+
+		// Validate cell ID for replace and delete modes
+		if (editMode == "replace" || editMode == "delete") && (args.CellID == nil || *args.CellID == "") {
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: cell_id is required for replace and delete modes"}},
+				IsError: true,
+			}, nil
 		}
 
 		// Validate cell type for insert mode
@@ -274,26 +281,35 @@ func readNotebookContent(notebookPath string, cellID *string) (string, error) {
 		return "", fmt.Errorf("failed to parse notebook JSON: %w", err)
 	}
 
-	// If specific cell ID requested, find and return only that cell
+	// Format cells based on cellID filter
+	var output strings.Builder
+
 	if cellID != nil && *cellID != "" {
+		// Find specific cell by ID
+		found := false
 		for i, cell := range notebook.Cells {
 			if cell.ID == *cellID {
-				return formatNotebookCell(cell, i), nil
+				output.WriteString(fmt.Sprintf("Jupyter Notebook: %s (Cell ID: %s)\n", filepath.Base(notebookPath), *cellID))
+				output.WriteString(fmt.Sprintf("Format: v%d.%d\n\n", notebook.NBFormat, notebook.NBFormatMinor))
+				output.WriteString(formatNotebookCell(cell, i))
+				found = true
+				break
 			}
 		}
-		return "", fmt.Errorf("cell with ID '%s' not found", *cellID)
-	}
+		if !found {
+			return "", fmt.Errorf("cell with ID '%s' not found", *cellID)
+		}
+	} else {
+		// Format all cells
+		output.WriteString(fmt.Sprintf("Jupyter Notebook: %s\n", filepath.Base(notebookPath)))
+		output.WriteString(fmt.Sprintf("Format: v%d.%d\n", notebook.NBFormat, notebook.NBFormatMinor))
+		output.WriteString(fmt.Sprintf("Total cells: %d\n\n", len(notebook.Cells)))
 
-	// Format all cells
-	var output strings.Builder
-	output.WriteString(fmt.Sprintf("Jupyter Notebook: %s\n", filepath.Base(notebookPath)))
-	output.WriteString(fmt.Sprintf("Format: v%d.%d\n", notebook.NBFormat, notebook.NBFormatMinor))
-	output.WriteString(fmt.Sprintf("Total cells: %d\n\n", len(notebook.Cells)))
-
-	for i, cell := range notebook.Cells {
-		output.WriteString(formatNotebookCell(cell, i))
-		if i < len(notebook.Cells)-1 {
-			output.WriteString("\n" + strings.Repeat("-", 80) + "\n\n")
+		for i, cell := range notebook.Cells {
+			output.WriteString(formatNotebookCell(cell, i))
+			if i < len(notebook.Cells)-1 {
+				output.WriteString("\n" + strings.Repeat("-", 80) + "\n\n")
+			}
 		}
 	}
 
@@ -479,8 +495,8 @@ func replaceNotebookCell(notebook *JupyterNotebook, cellID *string, newSource st
 	}
 
 	// Find the cell by ID
-	for i := range notebook.Cells {
-		if notebook.Cells[i].ID == *cellID {
+	for i, cell := range notebook.Cells {
+		if cell.ID == *cellID {
 			// Update cell type if specified
 			if cellType != nil && *cellType != "" {
 				notebook.Cells[i].CellType = *cellType
@@ -495,7 +511,7 @@ func replaceNotebookCell(notebook *JupyterNotebook, cellID *string, newSource st
 				notebook.Cells[i].ExecutionCount = nil
 			}
 
-			return fmt.Sprintf("Successfully replaced content of cell %s", *cellID), true, nil
+			return fmt.Sprintf("Successfully replaced content of cell with ID '%s'", *cellID), true, nil
 		}
 	}
 
@@ -524,12 +540,17 @@ func insertNotebookCell(notebook *JupyterNotebook, cellID *string, newSource str
 	// Determine insertion position
 	insertIndex := 0
 	if cellID != nil && *cellID != "" {
-		// Find the cell to insert after
+		// Find the cell by ID to insert after it
+		found := false
 		for i, cell := range notebook.Cells {
 			if cell.ID == *cellID {
 				insertIndex = i + 1
+				found = true
 				break
 			}
+		}
+		if !found {
+			return "", false, fmt.Errorf("cell with ID '%s' not found", *cellID)
 		}
 	}
 
@@ -544,7 +565,7 @@ func insertNotebookCell(notebook *JupyterNotebook, cellID *string, newSource str
 
 	position := "at the beginning"
 	if cellID != nil && *cellID != "" {
-		position = fmt.Sprintf("after cell %s", *cellID)
+		position = fmt.Sprintf("after cell with ID '%s'", *cellID)
 	}
 
 	return fmt.Sprintf("Successfully inserted new %s cell (ID: %s) %s", cellType, newCellID, position), true, nil
@@ -556,12 +577,11 @@ func deleteNotebookCell(notebook *JupyterNotebook, cellID *string) (string, bool
 		return "", false, fmt.Errorf("cell_id is required for delete mode")
 	}
 
-	// Find and remove the cell
+	// Find and remove the cell by ID
 	for i, cell := range notebook.Cells {
 		if cell.ID == *cellID {
-			// Remove the cell
 			notebook.Cells = append(notebook.Cells[:i], notebook.Cells[i+1:]...)
-			return fmt.Sprintf("Successfully deleted cell %s", *cellID), true, nil
+			return fmt.Sprintf("Successfully deleted cell with ID '%s'", *cellID), true, nil
 		}
 	}
 
