@@ -1,259 +1,144 @@
 # Claude Code MCP Server
 
-A Model Context Protocol (MCP) server that exposes Claude Code's built-in tools as MCP tools, enabling external applications to access file operations, system commands, web functionality, and task management through the standardized MCP interface.
+A Model Context Protocol (MCP) server that brings Claude Code's powerful development tools to any application. Get instant access to file operations, command execution, web tools, and task management through the standardized MCP interface.
 
-## Features
+## What It Does
 
-- **Claude Code Tool Compatibility**: 14 core Claude Code tools implemented with identical functionality
-- **Zero Configuration**: No configuration required - all tools available by default
-- **Built-in Security**: Path validation and command sanitization for safe operation
-- **Multiple Transport Support**: Stdio, HTTP/SSE, and in-memory transports
-- **High Performance**: Optimized implementations using native system commands
+Transform any MCP-compatible application into a powerful development environment with:
+
+- **File Operations**: Read, write, edit, search, and navigate files with ease
+- **Command Execution**: Run shell commands with persistent sessions
+- **Web Tools**: Fetch web content and perform searches
+- **Jupyter Support**: Work with notebooks programmatically
+- **Task Management**: Organize and track your work
+- **Built-in Security**: Safe operations with automatic validation
 
 ## Quick Start
 
-### Installation
+### 1. Install
 
-#### From Binary
+Download the latest binary for your platform:
 
-Download the latest release for your platform:
-
+**Linux/macOS:**
 ```bash
-# Linux
-curl -L https://github.com/d-kuro/claude-code-mcp/releases/latest/download/claude-code-mcp-linux-amd64 -o claude-code-mcp
+curl -L https://github.com/d-kuro/claude-code-mcp/releases/latest/download/claude-code-mcp-$(uname -s | tr '[:upper:]' '[:lower:]')-amd64 -o claude-code-mcp
 chmod +x claude-code-mcp
+```
 
-# macOS
-curl -L https://github.com/d-kuro/claude-code-mcp/releases/latest/download/claude-code-mcp-darwin-amd64 -o claude-code-mcp
-chmod +x claude-code-mcp
-
-# Windows
+**Windows:**
+```powershell
 curl -L https://github.com/d-kuro/claude-code-mcp/releases/latest/download/claude-code-mcp-windows-amd64.exe -o claude-code-mcp.exe
 ```
 
-#### From Source
+### 2. Run
 
 ```bash
-# Requires Go 1.23+
-git clone https://github.com/d-kuro/claude-code-mcp
-cd claude-code-mcp
-go build -o claude-code-mcp ./cmd/claude-code-mcp
-```
-
-### Basic Usage
-
-**All tools are available immediately - no configuration needed:**
-
-```bash
-# Download and run
 ./claude-code-mcp
 ```
 
-That's it! All Claude Code tools are now available through the MCP interface with built-in security.
+That's it! All tools are now available through the MCP interface.
 
 ## Available Tools
 
-### File Operations
-- **Read**: Read file contents with line offset/limit support
-- **Write**: Write files with atomic operations and directory creation
-- **Edit**: String replacement with automatic backup
-- **MultiEdit**: Multiple edits in a single atomic operation
-- **LS**: List directory contents using native `ls` command
-- **Glob**: Pattern-based file discovery using `find`
-- **Grep**: Content search using `ripgrep` (`rg`)
+### 📁 File Operations
+- **Read** - View file contents with optional line ranges
+- **Write** - Create or overwrite files safely
+- **Edit** - Make precise string replacements
+- **MultiEdit** - Apply multiple edits atomically
+- **LS** - List directory contents
+- **Glob** - Find files by patterns
+- **Grep** - Search file contents
 
-### System Operations
-- **Bash**: Execute commands with persistent shell sessions
+### ⚡ System Tools
+- **Bash** - Execute shell commands with persistent sessions
 
-### Extended Tools
-- **NotebookRead/NotebookEdit**: Jupyter notebook support
-- **WebFetch**: Fetch and process web content
-- **WebSearch**: Web search with domain filtering
-- **TodoRead/TodoWrite**: Session-based task management
+### 🌐 Web Tools
+- **WebFetch** - Retrieve and process web content
+- **WebSearch** - Search the web with filtering options
 
-### Unsupported Tools
+### 📓 Notebook Support
+- **NotebookRead** - Read Jupyter notebook cells
+- **NotebookEdit** - Modify notebook content
 
-The following Claude Code tools are **not supported** in this MCP server:
+### ✅ Task Management
+- **TodoRead/TodoWrite** - Organize tasks within sessions
 
-- **Task**: Agent launching functionality is not available in MCP context
-- **exit_plan_mode**: Development workflow tool not applicable for MCP usage
-
-## Configuration
-
-**No configuration required!** All tools work out of the box.
-
-### Optional Environment Variables
-
-You can customize logging if needed:
-
-```bash
-# Set log level (debug, info, warn, error)
-export LOG_LEVEL=debug
-./claude-code-mcp
-```
-
-### Built-in Security Features
-
-- **Path Validation**: All file paths are validated and sanitized
-- **Command Sanitization**: Dangerous commands and patterns are blocked
-- **URL Validation**: Web requests are validated with basic checks
-- **Resource Limits**: File size, output size, and timeout limits enforced
-- **Session Isolation**: Todo tasks are isolated per MCP session
-
-## Docker Deployment
-
-```bash
-# Build image
-docker build -t claude-code-mcp .
-
-# Run with configuration
-docker run -v ~/.config/claude-code-mcp:/root/.config/claude-code-mcp \
-           -v ~/projects:/projects \
-           claude-code-mcp
-
-# Run with HTTP transport
-docker run -p 8080:8080 \
-           -v ~/.config/claude-code-mcp:/root/.config/claude-code-mcp \
-           claude-code-mcp --http :8080
-```
-
-## Integration Examples
+## Integration
 
 ### With Claude Desktop
 
-Add to your Claude Desktop configuration (`mcp.json`):
+Add to your `~/.config/claude-desktop/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "claude-code-mcp": {
-      "command": "/path/to/claude-code-mcp",
-      "args": [],
-      "env": {
-        "LOG_LEVEL": "info"
-      }
+      "command": "/path/to/claude-code-mcp"
     }
   }
 }
 ```
 
-See [MCP Configuration Guide](docs/mcp-configuration.md) for detailed configuration options.
+Restart Claude Desktop and the tools will appear automatically.
 
-### With Custom MCP Client
+### With Other MCP Clients
 
-```go
-import (
-    "github.com/modelcontextprotocol/go-sdk/mcp"
-)
+The server works with any MCP-compatible application. Connect using:
+- **stdio** transport (default)
+- **HTTP/SSE** transport (planned)
 
-// Create client
-client := mcp.NewClient()
+## Configuration
 
-// Connect to server
-transport := mcp.NewStdioTransport()
-err := client.Connect(transport)
+### Zero Configuration Required
 
-// Call a tool
-result, err := client.CallTool(ctx, "Read", map[string]any{
-    "file_path": "/path/to/file.txt",
-})
-```
+All tools work immediately with sensible defaults and built-in security.
 
-## Development
+### Optional Settings
 
-### Building from Source
-
-```bash
-# Clone repository
-git clone https://github.com/d-kuro/claude-code-mcp
-cd claude-code-mcp
-
-# Install dependencies
-go mod download
-
-# Build
-go build -o claude-code-mcp ./cmd/claude-code-mcp
-
-# Run tests
-go test ./...
-
-# Run with race detector
-go test -race ./...
-```
-
-### Running Tests
-
-```bash
-# Unit tests
-go test ./...
-
-# Integration tests
-go test ./internal/integration/...
-
-# Specific package tests
-go test ./internal/tools/file/...
-
-# With coverage
-go test -cover ./...
-```
-
-### Project Structure
-
-```
-claude-code-mcp/
-├── cmd/claude-code-mcp/     # Main server entry point
-├── pkg/                     # Public packages
-│   ├── config/             # Configuration management
-│   └── errors/            # Error types
-├── internal/              # Private implementation
-│   ├── server/           # MCP server core
-│   ├── tools/           # Tool implementations
-│   │   ├── file/       # File operations
-│   │   ├── bash/       # System operations
-│   │   ├── web/        # Web tools
-│   │   ├── notebook/   # Jupyter support
-│   │   ├── todo/       # Task management
-│   ├── security/       # Security validation
-│   └── logging/        # Logging infrastructure
-└── examples/           # Usage examples
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Q: Are all Claude Code tools available?**
-A: 14 of the 16 Claude Code tools are available immediately. The Task and exit_plan_mode tools are not supported due to MCP architectural limitations.
-
-**Q: What security measures are in place?**
-A: Built-in path validation, command sanitization, and resource limits protect your system.
-
-**Q: Can I use relative paths?**
-A: No, all paths must be absolute for security reasons.
-
-**Q: How do I enable debug logging?**
-A: Set the LOG_LEVEL environment variable:
+Control logging level:
 ```bash
 export LOG_LEVEL=debug
 ./claude-code-mcp
 ```
 
-## Contributing
+## Security Features
 
-Contributions are welcome! Please read our contributing guidelines and submit pull requests to our repository.
+- **Path Validation** - All file paths are validated and sanitized
+- **Command Safety** - Dangerous commands are blocked
+- **Resource Limits** - File sizes and timeouts are controlled
+- **Session Isolation** - Each MCP session is independent
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Use Cases
+
+### Development Workflows
+- **Code Review**: Read and analyze code across multiple files
+- **Refactoring**: Make coordinated changes with MultiEdit
+- **Debugging**: Execute commands and inspect outputs
+- **Documentation**: Fetch web content and organize information
+
+### Data Analysis
+- **Research**: Search files and web content
+- **Notebook Work**: Read and modify Jupyter notebooks
+- **File Processing**: Batch operations on multiple files
+
+### Task Management
+- **Project Planning**: Organize work with todo lists
+- **Progress Tracking**: Maintain session-based task states
+
+## Troubleshooting
+
+**Q: Which tools are available?**  
+A: 14 of Claude Code's 16 tools. The Task and exit_plan_mode tools are not supported in MCP context.
+
+**Q: Do I need to configure anything?**  
+A: No! Everything works out of the box with built-in security.
+
+**Q: Can I use relative paths?**  
+A: No, all paths must be absolute for security reasons.
+
+**Q: How do I see debug information?**  
+A: Set `LOG_LEVEL=debug` before running the server.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Built on the [Model Context Protocol](https://github.com/modelcontextprotocol/go-sdk)
-- Inspired by [Claude Code](https://claude.ai/code) tools
-- Uses [ripgrep](https://github.com/BurntSushi/ripgrep) for fast searching
+MIT License - see LICENSE file for details.
